@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +52,7 @@ import com.xiaohei.tv.ui.theme.SurfaceDark
 import com.xiaohei.tv.ui.theme.TextDim
 import com.xiaohei.tv.ui.theme.TextMain
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun HistoryScreen(
@@ -61,6 +64,14 @@ fun HistoryScreen(
     var pendingDelete by remember { mutableStateOf<HistoryEntry?>(null) }
     var pendingClear by remember { mutableStateOf(false) }
     val firstFocus = remember { FocusRequester() }
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val scrollToTop: () -> Unit = {
+        scope.launch {
+            delay(60)
+            runCatching { gridState.scrollToItem(0) }
+        }
+    }
 
     LaunchedEffect(history.size) {
         if (history.isNotEmpty()) {
@@ -78,6 +89,7 @@ fun HistoryScreen(
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
+        state = gridState,
         modifier = Modifier
             .fillMaxSize()
             .background(BgDark),
@@ -97,15 +109,17 @@ fun HistoryScreen(
                     subtitle = "共 ${history.size} 条记录 · 自动记录播放进度",
                     modifier = Modifier.weight(1f),
                 )
-                TvButton("清空历史", onClick = { pendingClear = true })
+                TvButton("清空历史", onClick = { pendingClear = true }, onFocus = scrollToTop)
             }
         }
         items(history, key = { "${it.providerId}-${it.videoId}" }) { entry ->
+            val inFirstRow = entry == history.getOrNull(0) || entry == history.getOrNull(1)
             HistoryCard(
                 entry = entry,
                 onResume = { onResume(entry) },
                 onDelete = { pendingDelete = entry },
                 focusRequester = if (entry == history.first()) firstFocus else null,
+                onFocusTop = if (inFirstRow) scrollToTop else null,
             )
         }
     }
@@ -142,6 +156,7 @@ private fun HistoryCard(
     onResume: () -> Unit,
     onDelete: () -> Unit,
     focusRequester: FocusRequester?,
+    onFocusTop: (() -> Unit)?,
 ) {
     Row(
         modifier = Modifier
@@ -215,8 +230,9 @@ private fun HistoryCard(
                     onClick = onResume,
                     primary = true,
                     focusRequester = focusRequester,
+                    onFocus = onFocusTop,
                 )
-                TvButton(text = "删除", onClick = onDelete)
+                TvButton(text = "删除", onClick = onDelete, onFocus = onFocusTop)
             }
         }
     }

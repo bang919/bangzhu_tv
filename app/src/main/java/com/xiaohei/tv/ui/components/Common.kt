@@ -103,6 +103,7 @@ fun TvButton(
     icon: ImageVector? = null,
     focusRequester: FocusRequester? = null,
     iconOnly: Boolean = false,
+    onFocus: (() -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val background by animateColorAsState(
@@ -135,7 +136,10 @@ fun TvButton(
                 shape = shape,
             )
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus?.invoke()
+            }
             .clickable(onClick = onClick)
             .then(if (iconOnly) Modifier.padding(horizontal = 14.dp) else Modifier.padding(horizontal = 18.dp))
             .padding(vertical = 11.dp),
