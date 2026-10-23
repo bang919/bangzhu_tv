@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">小黑TV</string>
+    <string name="vpn_channel_name">网络加速</string>
+    <string name="vpn_notification_running">Clash VPN 已连接</string>
+    <string name="vpn_notification_loading">Clash VPN 正在连接…</string>
+    <string name="vpn_stop">断开</string>
+</resources>
