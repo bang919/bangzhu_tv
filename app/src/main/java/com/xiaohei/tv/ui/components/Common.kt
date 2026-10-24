@@ -48,7 +48,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
@@ -578,6 +577,11 @@ fun TvFilterBar(
                     },
                     modifier = Modifier.focusRequester(groupRequester(spec.key)),
                     onFocused = onFocus,
+                    onDown = if (expandedKey != null) {
+                        { runCatching { optionsFocus.requestFocus() } }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -623,6 +627,7 @@ private fun FilterGroupChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onFocused: (() -> Unit)? = null,
+    onDown: (() -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(20.dp)
@@ -632,6 +637,14 @@ private fun FilterGroupChip(
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) onFocused?.invoke()
+            }
+            .onPreviewKeyEvent { event ->
+                if (onDown != null && event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                    onDown()
+                    true
+                } else {
+                    false
+                }
             }
             .clip(shape)
             .background(

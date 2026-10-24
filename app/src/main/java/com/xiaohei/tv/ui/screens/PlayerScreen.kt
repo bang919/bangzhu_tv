@@ -90,6 +90,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.xiaohei.tv.MainViewModel
+import com.xiaohei.tv.data.SkipTimes
 import com.xiaohei.tv.data.model.StreamInfo
 import com.xiaohei.tv.data.model.VideoCard
 import com.xiaohei.tv.data.model.VideoDetail
@@ -152,6 +153,7 @@ fun PlayerScreen(
     var selectedVideoKey by remember { mutableStateOf<String?>(null) }
     var selectedAudioKey by remember { mutableStateOf<String?>(null) }
     var selectedTextKey by remember { mutableStateOf<String?>(null) }
+    var skipTimes by remember(detail.id) { mutableStateOf(viewModel.skipTimesFor(detail.id)) }
 
     val rootFocus = remember { FocusRequester() }
     val seekFocus = remember { FocusRequester() }
@@ -263,8 +265,9 @@ fun PlayerScreen(
             streamState = LoadState.Success(info)
             exo.setMediaItem(MediaItem.fromUri(info.url))
             exo.prepare()
-            val startAt = if (!hasStarted) initialPosition else 0L
+            val resumeAt = if (!hasStarted) initialPosition else 0L
             hasStarted = true
+            val startAt = maxOf(resumeAt, skipTimes.introMs).coerceAtLeast(0)
             if (startAt > 0) exo.seekTo(startAt)
             exo.playWhenReady = true
         } catch (loadError: Exception) {
@@ -275,8 +278,17 @@ fun PlayerScreen(
     LaunchedEffect(detail.id, sourceIndex, episodeIndex) {
         while (true) {
             if (exo.isPlaying || exo.playbackState == Player.STATE_READY) {
-                position = exo.currentPosition.coerceAtLeast(0)
-                duration = exo.duration.coerceAtLeast(0)
+                val currentPosition = exo.currentPosition.coerceAtLeast(0)
+                val currentDuration = exo.duration.coerceAtLeast(0)
+                position = currentPosition
+                duration = currentDuration
+                val outro = skipTimes.outroMs
+                if (!controlsVisible && hasNext && outro > 0 && currentDuration > outro &&
+                    currentPosition >= currentDuration - outro
+                ) {
+                    episodeIndex += 1
+                    return@LaunchedEffect
+                }
             }
             delay(1000)
         }
@@ -348,6 +360,13 @@ fun PlayerScreen(
         position = target
         seekHintText = "$label · ${formatDuration(target)}"
         seekHintTick++
+    }
+
+    fun updateSkipTimes(next: SkipTimes) {
+        if (next == skipTimes) return
+        skipTimes = next
+        viewModel.saveSkipTimes(detail.id, next)
+        showControls()
     }
 
     fun applyVideoChoice(choice: TrackChoice?) {
@@ -679,6 +698,54 @@ fun PlayerScreen(
                             },
                         )
                     }
+                    SkipTimeButton(
+                        label = "设置片头",
+                        valueMs = skipTimes.introMs,
+                        onCapture = {
+                            val max = exo.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                            val current = (exo.currentPosition.coerceAtLeast(0) / 1000 * 1000)
+                            updateSkipTimes(
+                                skipTimes.copy(
+                                    introMs = current.coerceAtMost(max),
+                                )
+                            )
+                        },
+                        onClear = {
+                            updateSkipTimes(skipTimes.copy(introMs = 0))
+                        },
+                        onAdjust = { delta ->
+                            val max = exo.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                            updateSkipTimes(
+                                skipTimes.copy(
+                                    introMs = (skipTimes.introMs + delta).coerceIn(0, max),
+                                )
+                            )
+                        },
+                    )
+                    SkipTimeButton(
+                        label = "设置片尾",
+                        valueMs = skipTimes.outroMs,
+                        onCapture = {
+                            val max = exo.duration.takeIf { it > 0 } ?: duration
+                            val remaining = if (max > 0) {
+                                (max - exo.currentPosition).coerceAtLeast(0) / 1000 * 1000
+                            } else {
+                                0L
+                            }
+                            updateSkipTimes(skipTimes.copy(outroMs = remaining.coerceAtMost(max)))
+                        },
+                        onClear = {
+                            updateSkipTimes(skipTimes.copy(outroMs = 0))
+                        },
+                        onAdjust = { delta ->
+                            val max = exo.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                            updateSkipTimes(
+                                skipTimes.copy(
+                                    outroMs = (skipTimes.outroMs + delta).coerceIn(0, max),
+                                )
+                            )
+                        },
+                    )
                 }
             }
         }
@@ -747,6 +814,44 @@ fun PlayerScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SkipTimeButton(
+    label: String,
+    valueMs: Long,
+    onCapture: () -> Unit,
+    onClear: () -> Unit,
+    onAdjust: (Long) -> Unit,
+) {
+    var lastPressAt by remember { mutableLongStateOf(0L) }
+    TvButton(
+        text = "$label ${formatDuration(valueMs)}",
+        onClick = {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastPressAt <= 400) {
+                lastPressAt = 0L
+                onClear()
+            } else {
+                lastPressAt = now
+                onCapture()
+            }
+        },
+        modifier = Modifier.onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.DirectionUp -> {
+                    onAdjust(1000L)
+                    true
+                }
+                Key.DirectionDown -> {
+                    onAdjust(-1000L)
+                    true
+                }
+                else -> false
+            }
+        },
+    )
 }
 
 @Composable

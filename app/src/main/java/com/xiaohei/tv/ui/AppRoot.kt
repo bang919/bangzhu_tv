@@ -2,6 +2,7 @@ package com.xiaohei.tv.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,8 +20,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,10 +53,19 @@ import com.xiaohei.tv.ui.theme.TextMain
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private val SettingsSecret = listOf(
+    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
+    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
+    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
+)
+
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun XiaoheiTvApp(viewModel: MainViewModel) {
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var overlays by remember { mutableStateOf<List<Overlay>>(emptyList()) }
+    var settingsUnlocked by remember { mutableStateOf(false) }
+    val secretProgress = remember { intArrayOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
     var busyLabel by remember { mutableStateOf<String?>(null) }
     val searchState = remember { SearchUiState() }
@@ -147,6 +165,10 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
         }
     }
 
+    LaunchedEffect(tab, overlays.isNotEmpty()) {
+        secretProgress[0] = 0
+    }
+
     if (playerOverlay != null) {
         PlayerScreen(
             viewModel = viewModel,
@@ -164,116 +186,136 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
         return
     }
 
-    if (detailOverlay != null) {
-        Box(modifier = Modifier.fillMaxSize().background(BgDark)) {
-            DetailScreen(
-                viewModel = viewModel,
-                videoId = detailOverlay.videoId,
-                providerId = detailOverlay.providerId,
-                resumeEntry = history.firstOrNull {
-                    it.videoId == detailOverlay.videoId &&
-                        (it.providerId == detailOverlay.providerId || it.providerId.isBlank())
-                },
-                onOpenDetail = { openDetail(it) },
-                onPlay = { detail, sourceIndex, episodeIndex, position ->
-                    playDetail(detail, sourceIndex, episodeIndex, position)
-                },
-                onBack = { closeTopOverlay() },
-            )
-            BusyOverlay(busyLabel)
-        }
-        if (message != null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                MessageBar(message!!)
-            }
-        }
-        return
-    }
-
-    if (searchVisible) {
-        Box(modifier = Modifier.fillMaxSize().background(BgDark)) {
-            SearchScreen(
-                viewModel = viewModel,
-                ui = searchState,
-                onOpenDetail = { openDetail(it) },
-                onClose = { closeTopOverlay() },
-            )
-            BusyOverlay(busyLabel)
-        }
-        if (message != null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                MessageBar(message!!)
-            }
-        }
-        return
-    }
-
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark),
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || settingsUnlocked ||
+                    tab != MainTab.HOME || overlays.isNotEmpty()
+                ) {
+                    return@onPreviewKeyEvent false
+                }
+                if (event.key == SettingsSecret.getOrNull(secretProgress[0])) {
+                    secretProgress[0] += 1
+                    if (secretProgress[0] == SettingsSecret.size) {
+                        secretProgress[0] = 0
+                        settingsUnlocked = true
+                    }
+                } else {
+                    secretProgress[0] = if (event.key == SettingsSecret.first()) 1 else 0
+                }
+                false
+            },
     ) {
-        TopNav(
-            current = tab,
-            clashPhase = clashStatus.phase,
-            vpnEnabled = settings.vpnEnabled,
-            onSelect = { selected ->
-                overlays = emptyList()
-                tab = selected
-            },
-            onOpenSearch = {
-                searchState.reset()
-                overlays = listOf(Overlay.Search)
-            },
-            onOpenHistory = {
-                overlays = emptyList()
-                tab = MainTab.HISTORY
-            },
-            onOpenSettings = {
-                overlays = emptyList()
-                tab = MainTab.SETTINGS
-            },
-        )
-        Box(modifier = Modifier.weight(1f)) {
-            when (tab) {
-                MainTab.HOME -> HomeScreen(
+        if (searchVisible) {
+            Box(modifier = Modifier.fillMaxSize().background(BgDark)) {
+                SearchScreen(
                     viewModel = viewModel,
-                    history = history,
+                    ui = searchState,
                     onOpenDetail = { openDetail(it) },
-                    onPlayCard = { playCard(it) },
-                    onResume = { playFromHistory(it) },
-                    onOpenTab = { tab = it },
+                    onClose = { closeTopOverlay() },
                 )
-                MainTab.RANKING -> RankingScreen(
-                    viewModel = viewModel,
-                    onOpenDetail = { openDetail(it) },
+                BusyOverlay(busyLabel)
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(BgDark),
+            ) {
+                TopNav(
+                    current = tab,
+                    clashPhase = clashStatus.phase,
+                    vpnEnabled = settings.vpnEnabled,
+                    settingsVisible = settingsUnlocked,
+                    onSelect = { selected ->
+                        overlays = emptyList()
+                        tab = selected
+                    },
+                    onOpenSearch = {
+                        searchState.reset()
+                        overlays = listOf(Overlay.Search)
+                    },
+                    onOpenHistory = {
+                        overlays = emptyList()
+                        tab = MainTab.HISTORY
+                    },
+                    onOpenSettings = {
+                        overlays = emptyList()
+                        tab = MainTab.SETTINGS
+                    },
                 )
-                MainTab.HISTORY -> HistoryScreen(
-                    history = history,
-                    onResume = { playFromHistory(it) },
-                    onDelete = { viewModel.deleteHistory(it) },
-                    onClear = { viewModel.clearHistory() },
-                )
-                MainTab.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                else -> {
-                    val type = tab.videoType
-                    if (type != null) {
-                        CategoryScreen(
+                Box(modifier = Modifier.weight(1f)) {
+                    when (tab) {
+                        MainTab.HOME -> HomeScreen(
                             viewModel = viewModel,
-                            type = type,
+                            history = history,
+                            onOpenDetail = { openDetail(it) },
+                            onPlayCard = { playCard(it) },
+                            onResume = { playFromHistory(it) },
+                            onOpenTab = { tab = it },
+                        )
+                        MainTab.RANKING -> RankingScreen(
+                            viewModel = viewModel,
                             onOpenDetail = { openDetail(it) },
                         )
+                        MainTab.HISTORY -> HistoryScreen(
+                            history = history,
+                            onResume = { playFromHistory(it) },
+                            onDelete = { viewModel.deleteHistory(it) },
+                            onClear = { viewModel.clearHistory() },
+                        )
+                        MainTab.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                        else -> {
+                            val type = tab.videoType
+                            if (type != null) {
+                                CategoryScreen(
+                                    viewModel = viewModel,
+                                    type = type,
+                                    detailOpen = detailOverlay != null,
+                                    onOpenDetail = { openDetail(it) },
+                                )
+                            }
+                        }
                     }
+
+                    BusyOverlay(busyLabel)
                 }
             }
-
-            BusyOverlay(busyLabel)
         }
-    }
 
-    if (message != null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-            MessageBar(message!!)
+        // Detail is layered above the tab content instead of replacing it, so filters,
+        // loaded pages and grid scroll survive a round trip to the detail page.
+        if (detailOverlay != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(BgDark)
+                    .focusGroup()
+                    .focusProperties { exit = { FocusRequester.Cancel } },
+            ) {
+                DetailScreen(
+                    viewModel = viewModel,
+                    videoId = detailOverlay.videoId,
+                    providerId = detailOverlay.providerId,
+                    resumeEntry = history.firstOrNull {
+                        it.videoId == detailOverlay.videoId &&
+                            (it.providerId == detailOverlay.providerId || it.providerId.isBlank())
+                    },
+                    onOpenDetail = { openDetail(it) },
+                    onPlay = { detail, sourceIndex, episodeIndex, position ->
+                        playDetail(detail, sourceIndex, episodeIndex, position)
+                    },
+                    onBack = { closeTopOverlay() },
+                )
+                BusyOverlay(busyLabel)
+            }
+        }
+
+        if (message != null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                MessageBar(message!!)
+            }
         }
     }
 }

@@ -58,6 +58,7 @@ import kotlinx.coroutines.launch
 fun CategoryScreen(
     viewModel: MainViewModel,
     type: VideoType,
+    detailOpen: Boolean,
     onOpenDetail: (VideoCard) -> Unit,
 ) {
     var href by remember(type) { mutableStateOf<String?>(null) }
@@ -65,11 +66,19 @@ fun CategoryScreen(
     var reloadKey by remember(type) { mutableIntStateOf(0) }
     val gridState = rememberLazyGridState()
     val firstFocus = remember { FocusRequester() }
+    val restoreFocus = remember { FocusRequester() }
+    var lastOpenedIndex by remember(type) { mutableIntStateOf(-1) }
     val scope = rememberCoroutineScope()
     val scrollToTop: () -> Unit = {
         scope.launch {
             delay(60)
             runCatching { gridState.scrollToItem(0) }
+        }
+    }
+
+    LaunchedEffect(detailOpen) {
+        if (!detailOpen && lastOpenedIndex >= 0) {
+            runCatching { restoreFocus.requestFocus() }
         }
     }
 
@@ -98,7 +107,12 @@ fun CategoryScreen(
                 showRank = false,
                 gridState = gridState,
                 firstFocus = firstFocus,
-                onOpenDetail = onOpenDetail,
+                onOpenDetail = { card, index ->
+                    lastOpenedIndex = index
+                    onOpenDetail(card)
+                },
+                focusRestoreIndex = lastOpenedIndex,
+                focusRestore = restoreFocus,
                 header = {
                     CatalogHeader(
                         title = page.title.ifBlank { type.label },
@@ -192,7 +206,7 @@ fun RankingScreen(
                 showRank = true,
                 gridState = gridState,
                 firstFocus = firstFocus,
-                onOpenDetail = onOpenDetail,
+                onOpenDetail = { card, _ -> onOpenDetail(card) },
                 header = {
                     CatalogHeader(
                         title = "${type.label}${sort.label}",
@@ -252,9 +266,11 @@ private fun CatalogGrid(
     showRank: Boolean,
     gridState: LazyGridState,
     firstFocus: FocusRequester,
-    onOpenDetail: (VideoCard) -> Unit,
+    onOpenDetail: (VideoCard, Int) -> Unit,
     header: @Composable () -> Unit,
     pager: (@Composable () -> Unit)?,
+    focusRestoreIndex: Int = -1,
+    focusRestore: FocusRequester? = null,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(116.dp),
@@ -283,9 +299,13 @@ private fun CatalogGrid(
             itemsIndexed(page.items, key = { index, card -> "${page.currentHref}#$index#${card.id}" }) { index, card ->
                 PosterCard(
                     card = card,
-                    onClick = { onOpenDetail(card) },
+                    onClick = { onOpenDetail(card, index) },
                     rank = if (showRank) index + 1 else null,
-                    focusRequester = if (index == 0) firstFocus else null,
+                    focusRequester = when {
+                        index == focusRestoreIndex -> focusRestore
+                        index == 0 -> firstFocus
+                        else -> null
+                    },
                     subtitle = listOf(card.year, card.area)
                         .filter { it.isNotBlank() }
                         .joinToString(" · ")

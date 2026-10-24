@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.xiaohei.tv.data.AppSettings
+import com.xiaohei.tv.data.SkipTimes
 import com.xiaohei.tv.data.local.HistoryEntry
 import com.xiaohei.tv.data.model.CategoryPage
 import com.xiaohei.tv.data.model.CategorySort
@@ -111,6 +112,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun saveAutoStart(enabled: Boolean) {
         settingsStore.setAutoStart(enabled)
+    }
+
+    fun skipTimesFor(videoId: String): SkipTimes =
+        settings.value.skipTimes[videoId] ?: SkipTimes()
+
+    fun saveSkipTimes(videoId: String, times: SkipTimes) {
+        viewModelScope.launch { settingsStore.saveSkipTimes(videoId, times) }
     }
 
     suspend fun saveVpnEnabled(enabled: Boolean) {

@@ -10,11 +10,18 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.xiaohei.tv.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
+@Serializable
+data class SkipTimes(
+    val introMs: Long = 0,
+    val outroMs: Long = 0,
+)
 
 data class AppSettings(
     val vpnEnabled: Boolean = false,
@@ -23,6 +30,7 @@ data class AppSettings(
     val autoStart: Boolean = false,
     val autoConnect: Boolean = false,
     val groupSelections: Map<String, String> = emptyMap(),
+    val skipTimes: Map<String, SkipTimes> = emptyMap(),
 )
 
 const val DEFAULT_SUBSCRIPTION_NAME = "iKuuu_V2"
@@ -30,6 +38,7 @@ val DEFAULT_SUBSCRIPTION_URL: String = BuildConfig.DEFAULT_SUBSCRIPTION_URL
 
 class SettingsStore(private val context: Context) {
     private val selectionSerializer = MapSerializer(String.serializer(), String.serializer())
+    private val skipTimesSerializer = MapSerializer(String.serializer(), SkipTimes.serializer())
     private val json = Json { ignoreUnknownKeys = true }
 
     private object Keys {
@@ -39,6 +48,7 @@ class SettingsStore(private val context: Context) {
         val AUTO_START = booleanPreferencesKey("auto_start")
         val AUTO_CONNECT = booleanPreferencesKey("auto_connect")
         val SELECTIONS = stringPreferencesKey("group_selections")
+        val SKIP_TIMES = stringPreferencesKey("skip_times")
     }
 
     val data: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -50,6 +60,9 @@ class SettingsStore(private val context: Context) {
             autoConnect = prefs[Keys.AUTO_CONNECT] ?: false,
             groupSelections = prefs[Keys.SELECTIONS]?.let { raw ->
                 runCatching { json.decodeFromString(selectionSerializer, raw) }.getOrDefault(emptyMap())
+            } ?: emptyMap(),
+            skipTimes = prefs[Keys.SKIP_TIMES]?.let { raw ->
+                runCatching { json.decodeFromString(skipTimesSerializer, raw) }.getOrDefault(emptyMap())
             } ?: emptyMap(),
         )
     }
@@ -79,6 +92,15 @@ class SettingsStore(private val context: Context) {
                 runCatching { json.decodeFromString(selectionSerializer, raw) }.getOrDefault(emptyMap())
             } ?: emptyMap()
             prefs[Keys.SELECTIONS] = json.encodeToString(selectionSerializer, current + (group to proxy))
+        }
+    }
+
+    suspend fun saveSkipTimes(videoId: String, times: SkipTimes) {
+        context.settingsDataStore.edit { prefs ->
+            val current = prefs[Keys.SKIP_TIMES]?.let { raw ->
+                runCatching { json.decodeFromString(skipTimesSerializer, raw) }.getOrDefault(emptyMap())
+            } ?: emptyMap()
+            prefs[Keys.SKIP_TIMES] = json.encodeToString(skipTimesSerializer, current + (videoId to times))
         }
     }
 }

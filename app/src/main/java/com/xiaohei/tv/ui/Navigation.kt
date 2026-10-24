@@ -91,6 +91,7 @@ fun TopNav(
     current: MainTab,
     clashPhase: ClashPhase,
     vpnEnabled: Boolean,
+    settingsVisible: Boolean,
     onSelect: (MainTab) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -154,22 +155,24 @@ fun TopNav(
                 onClick = onOpenHistory,
                 selected = current == MainTab.HISTORY,
             )
-            TvIconButton(
-                icon = Icons.Filled.Settings,
-                contentDescription = "设置",
-                onClick = onOpenSettings,
-                selected = current == MainTab.SETTINGS,
-                badgeColor = if (vpnEnabled) {
-                    when (clashPhase) {
-                        ClashPhase.Running -> Success
-                        ClashPhase.Connecting, ClashPhase.Preparing -> Gold
-                        ClashPhase.Error -> VpnError
-                        ClashPhase.Stopped -> TextDim
-                    }
-                } else {
-                    null
-                },
-            )
+            if (settingsVisible) {
+                TvIconButton(
+                    icon = Icons.Filled.Settings,
+                    contentDescription = "设置",
+                    onClick = onOpenSettings,
+                    selected = current == MainTab.SETTINGS,
+                    badgeColor = if (vpnEnabled) {
+                        when (clashPhase) {
+                            ClashPhase.Running -> Success
+                            ClashPhase.Connecting, ClashPhase.Preparing -> Gold
+                            ClashPhase.Error -> VpnError
+                            ClashPhase.Stopped -> TextDim
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
         }
     }
     Box(
