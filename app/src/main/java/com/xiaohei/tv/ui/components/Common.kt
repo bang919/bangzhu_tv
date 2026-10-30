@@ -2,7 +2,9 @@ package com.xiaohei.tv.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -92,6 +94,9 @@ import kotlinx.coroutines.launch
 val ScreenPad = 24.dp
 val CardShape = RoundedCornerShape(8.dp)
 private val FocusBorder = 3.dp
+private val FocusScaleSpec = tween<Float>(durationMillis = 120, easing = FastOutSlowInEasing)
+private val PosterFadeBrush = Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000)))
+private val ContinueScrimBrush = Brush.verticalGradient(listOf(Color(0x22000000), Color(0xDD000000)))
 
 @Composable
 fun TvButton(
@@ -237,7 +242,15 @@ fun PosterCard(
     focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "posterScale")
+    val scale by animateFloatAsState(
+        targetValue = if (focused) 1.06f else 1f,
+        animationSpec = FocusScaleSpec,
+        label = "posterScale",
+    )
+    val context = LocalContext.current
+    val posterModel = remember(card.poster, context) {
+        ImageRequest.Builder(context).data(card.poster).crossfade(false).build()
+    }
     Column(
         modifier = modifier
             .graphicsLayer {
@@ -255,17 +268,10 @@ fun PosterCard(
                 .aspectRatio(2f / 3f)
                 .clip(CardShape)
                 .background(SurfaceHigh)
-                .border(
-                    width = if (focused) FocusBorder else 1.dp,
-                    color = if (focused) Gold else Divider,
-                    shape = CardShape,
-                ),
+                .then(if (focused) Modifier.border(FocusBorder, Gold, CardShape) else Modifier),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(card.poster)
-                    .crossfade(true)
-                    .build(),
+                model = posterModel,
                 contentDescription = card.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -283,9 +289,7 @@ fun PosterCard(
                     .fillMaxWidth()
                     .height(56.dp)
                     .align(Alignment.BottomCenter)
-                    .background(
-                        Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))),
-                    ),
+                    .background(PosterFadeBrush),
             )
             if (!card.note.isNullOrBlank()) {
                 Text(
@@ -354,7 +358,11 @@ fun MoreCard(
     focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "moreScale")
+    val scale by animateFloatAsState(
+        targetValue = if (focused) 1.06f else 1f,
+        animationSpec = FocusScaleSpec,
+        label = "moreScale",
+    )
     Column(
         modifier = modifier
             .graphicsLayer {
@@ -372,11 +380,7 @@ fun MoreCard(
                 .aspectRatio(2f / 3f)
                 .clip(CardShape)
                 .background(if (focused) Accent.copy(alpha = 0.18f) else SurfaceDark)
-                .border(
-                    width = if (focused) FocusBorder else 1.dp,
-                    color = if (focused) Gold else Divider,
-                    shape = CardShape,
-                ),
+                .then(if (focused) Modifier.border(FocusBorder, Gold, CardShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -420,7 +424,15 @@ fun MoreCard(
 @Composable
 fun ContinueCard(entry: HistoryEntry, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.05f else 1f, label = "continueScale")
+    val scale by animateFloatAsState(
+        targetValue = if (focused) 1.05f else 1f,
+        animationSpec = FocusScaleSpec,
+        label = "continueScale",
+    )
+    val context = LocalContext.current
+    val posterModel = remember(entry.poster, context) {
+        ImageRequest.Builder(context).data(entry.poster).crossfade(false).build()
+    }
     Box(
         modifier = modifier
             .aspectRatio(16f / 9f)
@@ -432,11 +444,11 @@ fun ContinueCard(entry: HistoryEntry, onClick: () -> Unit, modifier: Modifier = 
             .focusPeekIntoView()
             .clip(CardShape)
             .background(SurfaceHigh)
-            .border(if (focused) FocusBorder else 1.dp, if (focused) Gold else Divider, CardShape)
+            .then(if (focused) Modifier.border(FocusBorder, Gold, CardShape) else Modifier)
             .clickable(onClick = onClick),
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current).data(entry.poster).crossfade(true).build(),
+            model = posterModel,
             contentDescription = entry.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
@@ -444,11 +456,7 @@ fun ContinueCard(entry: HistoryEntry, onClick: () -> Unit, modifier: Modifier = 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0x22000000), Color(0xDD000000)),
-                    )
-                ),
+                .background(ContinueScrimBrush),
         )
         Column(
             modifier = Modifier
