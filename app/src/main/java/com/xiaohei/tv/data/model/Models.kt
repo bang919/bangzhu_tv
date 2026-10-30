@@ -85,6 +85,13 @@ data class StreamInfo(
     val url: String,
     val source: String = "",
     val note: String = "",
+    val mimeType: String? = null,
+)
+
+data class ProviderInfo(
+    val id: String,
+    val name: String,
+    val baseUrl: String,
 )
 
 data class SearchFilterState(

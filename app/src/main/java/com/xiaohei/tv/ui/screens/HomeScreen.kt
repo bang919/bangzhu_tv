@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.xiaohei.tv.MainViewModel
@@ -84,12 +85,14 @@ fun HomeScreen(
     onResume: (HistoryEntry) -> Unit,
     onOpenTab: (MainTab) -> Unit,
 ) {
-    var state by remember { mutableStateOf<LoadState<HomeData>>(LoadState.Loading) }
-    var reloadKey by remember { mutableIntStateOf(0) }
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val providerId = settings.providerId.ifBlank { viewModel.defaultProviderId }
+    var state by remember(providerId) { mutableStateOf<LoadState<HomeData>>(LoadState.Loading) }
+    var reloadKey by remember(providerId) { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(reloadKey) {
+    LaunchedEffect(providerId, reloadKey) {
         state = LoadState.Loading
         state = try {
             LoadState.Success(viewModel.loadHome(force = reloadKey > 0))
@@ -172,8 +175,8 @@ fun HomeScreen(
 
 private fun tabForSection(title: String): MainTab = when {
     title.contains("电影") -> MainTab.MOVIE
-    title.contains("连续剧") || title.contains("电视剧") -> MainTab.SERIES
-    title.contains("动漫") || title.contains("动画") -> MainTab.ANIME
+    title.contains("剧") -> MainTab.SERIES
+    title.contains("动漫") || title.contains("动画") || title.contains("番剧") -> MainTab.ANIME
     title.contains("综艺") -> MainTab.VARIETY
     title.contains("纪录") -> MainTab.DOCUMENTARY
     else -> MainTab.MOVIE

@@ -168,14 +168,17 @@ fun PlayerScreen(
 
     val exo = remember {
         val client = TlsCompat.configure(OkHttpClient.Builder()).build()
+        val playerReferer = viewModel.refererFor(initialDetail.providerId)
         val httpFactory = OkHttpDataSource.Factory(client)
             .setUserAgent(
                 "Mozilla/5.0 (Linux; Android 12; Android TV) AppleWebKit/537.36 " +
                     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
-            .setDefaultRequestProperties(
-                mapOf("Referer" to viewModel.refererFor(initialDetail.providerId))
-            )
+            .apply {
+                if (playerReferer.isNotBlank()) {
+                    setDefaultRequestProperties(mapOf("Referer" to playerReferer))
+                }
+            }
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
@@ -263,7 +266,12 @@ fun PlayerScreen(
         try {
             val info = viewModel.resolveStream(episode.href, detail.providerId)
             streamState = LoadState.Success(info)
-            exo.setMediaItem(MediaItem.fromUri(info.url))
+            exo.setMediaItem(
+                MediaItem.Builder()
+                    .setUri(info.url)
+                    .apply { info.mimeType?.let(::setMimeType) }
+                    .build()
+            )
             exo.prepare()
             val resumeAt = if (!hasStarted) initialPosition else 0L
             hasStarted = true

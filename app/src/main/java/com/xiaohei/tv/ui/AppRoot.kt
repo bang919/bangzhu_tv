@@ -1,5 +1,6 @@
 package com.xiaohei.tv.ui
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -11,11 +12,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -25,14 +28,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.xiaohei.tv.MainActivity
 import com.xiaohei.tv.MainViewModel
 import com.xiaohei.tv.data.local.HistoryEntry
 import com.xiaohei.tv.data.model.VideoCard
@@ -53,10 +53,13 @@ import com.xiaohei.tv.ui.theme.TextMain
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val SettingsSecret = listOf(
-    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
-    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
-    Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
+private val SecretKeyCodes = intArrayOf(
+    AndroidKeyEvent.KEYCODE_DPAD_UP, AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+    AndroidKeyEvent.KEYCODE_DPAD_LEFT, AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
+    AndroidKeyEvent.KEYCODE_DPAD_UP, AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+    AndroidKeyEvent.KEYCODE_DPAD_LEFT, AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
+    AndroidKeyEvent.KEYCODE_DPAD_UP, AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+    AndroidKeyEvent.KEYCODE_DPAD_LEFT, AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
 )
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -64,7 +67,7 @@ private val SettingsSecret = listOf(
 fun XiaoheiTvApp(viewModel: MainViewModel) {
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var overlays by remember { mutableStateOf<List<Overlay>>(emptyList()) }
-    var settingsUnlocked by remember { mutableStateOf(false) }
+    var vpnUnlocked by remember { mutableStateOf(false) }
     val secretProgress = remember { intArrayOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
     var busyLabel by remember { mutableStateOf<String?>(null) }
@@ -73,6 +76,32 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val clashStatus by viewModel.clashStatus.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val activeProviderId = settings.providerId.ifBlank { viewModel.defaultProviderId }
+
+    val activity = LocalContext.current as? MainActivity
+    val gestureEnabled = rememberUpdatedState(
+        tab == MainTab.HOME && overlays.isEmpty() && !vpnUnlocked
+    )
+    DisposableEffect(activity) {
+        activity?.keyEventObserver = { keyCode, repeatCount ->
+            if (repeatCount == 0 && gestureEnabled.value) {
+                if (keyCode == SecretKeyCodes.getOrNull(secretProgress[0])) {
+                    secretProgress[0] += 1
+                    if (secretProgress[0] == SecretKeyCodes.size) {
+                        secretProgress[0] = 0
+                        vpnUnlocked = true
+                    }
+                } else {
+                    secretProgress[0] = if (keyCode == SecretKeyCodes.first()) 1 else 0
+                }
+            }
+        }
+        onDispose { activity?.keyEventObserver = null }
+    }
+
+    LaunchedEffect(activeProviderId) {
+        searchState.reset()
+    }
 
     val top = overlays.lastOrNull()
     val detailOverlay = top as? Overlay.Detail
@@ -187,25 +216,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || settingsUnlocked ||
-                    tab != MainTab.HOME || overlays.isNotEmpty()
-                ) {
-                    return@onPreviewKeyEvent false
-                }
-                if (event.key == SettingsSecret.getOrNull(secretProgress[0])) {
-                    secretProgress[0] += 1
-                    if (secretProgress[0] == SettingsSecret.size) {
-                        secretProgress[0] = 0
-                        settingsUnlocked = true
-                    }
-                } else {
-                    secretProgress[0] = if (event.key == SettingsSecret.first()) 1 else 0
-                }
-                false
-            },
+        modifier = Modifier.fillMaxSize(),
     ) {
         if (searchVisible) {
             Box(modifier = Modifier.fillMaxSize().background(BgDark)) {
@@ -227,7 +238,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                     current = tab,
                     clashPhase = clashStatus.phase,
                     vpnEnabled = settings.vpnEnabled,
-                    settingsVisible = settingsUnlocked,
+                    vpnVisible = vpnUnlocked,
                     onSelect = { selected ->
                         overlays = emptyList()
                         tab = selected
@@ -265,7 +276,10 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                             onDelete = { viewModel.deleteHistory(it) },
                             onClear = { viewModel.clearHistory() },
                         )
-                        MainTab.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                        MainTab.SETTINGS -> SettingsScreen(
+                            viewModel = viewModel,
+                            vpnVisible = vpnUnlocked,
+                        )
                         else -> {
                             val type = tab.videoType
                             if (type != null) {

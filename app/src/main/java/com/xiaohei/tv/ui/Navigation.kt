@@ -91,7 +91,7 @@ fun TopNav(
     current: MainTab,
     clashPhase: ClashPhase,
     vpnEnabled: Boolean,
-    settingsVisible: Boolean,
+    vpnVisible: Boolean,
     onSelect: (MainTab) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -109,7 +109,7 @@ fun TopNav(
     ) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                "小黑",
+                "帮主",
                 color = Accent,
                 style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.ExtraBold),
             )
@@ -155,24 +155,22 @@ fun TopNav(
                 onClick = onOpenHistory,
                 selected = current == MainTab.HISTORY,
             )
-            if (settingsVisible) {
-                TvIconButton(
-                    icon = Icons.Filled.Settings,
-                    contentDescription = "设置",
-                    onClick = onOpenSettings,
-                    selected = current == MainTab.SETTINGS,
-                    badgeColor = if (vpnEnabled) {
-                        when (clashPhase) {
-                            ClashPhase.Running -> Success
-                            ClashPhase.Connecting, ClashPhase.Preparing -> Gold
-                            ClashPhase.Error -> VpnError
-                            ClashPhase.Stopped -> TextDim
-                        }
-                    } else {
-                        null
-                    },
-                )
-            }
+            TvIconButton(
+                icon = Icons.Filled.Settings,
+                contentDescription = "设置",
+                onClick = onOpenSettings,
+                selected = current == MainTab.SETTINGS,
+                badgeColor = if (vpnVisible && vpnEnabled) {
+                    when (clashPhase) {
+                        ClashPhase.Running -> Success
+                        ClashPhase.Connecting, ClashPhase.Preparing -> Gold
+                        ClashPhase.Error -> VpnError
+                        ClashPhase.Stopped -> TextDim
+                    }
+                } else {
+                    null
+                },
+            )
         }
     }
     Box(

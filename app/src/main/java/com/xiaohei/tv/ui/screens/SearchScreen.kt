@@ -257,41 +257,49 @@ fun SearchScreen(
                         )
                     }
                     Spacer(Modifier.height(12.dp))
-                    TvFilterBar(
-                        specs = listOf(
-                            TvFilterSpec(
-                                key = "type",
-                                label = "类型",
-                                current = ui.typeFilter,
-                                options = TYPE_OPTIONS.map { option ->
-                                    TvFilterOption(option, ui.typeFilter == option) {
-                                        ui.typeFilter = option
-                                    }
-                                },
+                    if (viewModel.supportsSearchFilters) {
+                        TvFilterBar(
+                            specs = listOf(
+                                TvFilterSpec(
+                                    key = "type",
+                                    label = "类型",
+                                    current = ui.typeFilter,
+                                    options = TYPE_OPTIONS.map { option ->
+                                        TvFilterOption(option, ui.typeFilter == option) {
+                                            ui.typeFilter = option
+                                        }
+                                    },
+                                ),
+                                TvFilterSpec(
+                                    key = "year",
+                                    label = "年份",
+                                    current = ui.yearFilter,
+                                    options = YEAR_OPTIONS.map { option ->
+                                        TvFilterOption(option, ui.yearFilter == option) {
+                                            ui.yearFilter = option
+                                        }
+                                    },
+                                ),
+                                TvFilterSpec(
+                                    key = "area",
+                                    label = "地区",
+                                    current = ui.areaFilter,
+                                    options = AREA_OPTIONS.map { option ->
+                                        TvFilterOption(option, ui.areaFilter == option) {
+                                            ui.areaFilter = option
+                                        }
+                                    },
+                                ),
                             ),
-                            TvFilterSpec(
-                                key = "year",
-                                label = "年份",
-                                current = ui.yearFilter,
-                                options = YEAR_OPTIONS.map { option ->
-                                    TvFilterOption(option, ui.yearFilter == option) {
-                                        ui.yearFilter = option
-                                    }
-                                },
-                            ),
-                            TvFilterSpec(
-                                key = "area",
-                                label = "地区",
-                                current = ui.areaFilter,
-                                options = AREA_OPTIONS.map { option ->
-                                    TvFilterOption(option, ui.areaFilter == option) {
-                                        ui.areaFilter = option
-                                    }
-                                },
-                            ),
-                        ),
-                        onFocus = scrollToTop,
-                    )
+                            onFocus = scrollToTop,
+                        )
+                    } else {
+                        Text(
+                            text = "该视频源不支持此功能",
+                            color = TextDim,
+                            fontSize = 13.sp,
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                     if (ui.activeKeyword.isNotBlank() && ui.state is LoadState.Success) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

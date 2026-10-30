@@ -29,6 +29,7 @@ data class AppSettings(
     val subscriptionUrl: String = DEFAULT_SUBSCRIPTION_URL,
     val autoStart: Boolean = false,
     val autoConnect: Boolean = false,
+    val providerId: String = "",
     val groupSelections: Map<String, String> = emptyMap(),
     val skipTimes: Map<String, SkipTimes> = emptyMap(),
 )
@@ -47,6 +48,7 @@ class SettingsStore(private val context: Context) {
         val URL = stringPreferencesKey("subscription_url")
         val AUTO_START = booleanPreferencesKey("auto_start")
         val AUTO_CONNECT = booleanPreferencesKey("auto_connect")
+        val PROVIDER_ID = stringPreferencesKey("provider_id")
         val SELECTIONS = stringPreferencesKey("group_selections")
         val SKIP_TIMES = stringPreferencesKey("skip_times")
     }
@@ -58,6 +60,7 @@ class SettingsStore(private val context: Context) {
             subscriptionUrl = prefs[Keys.URL] ?: DEFAULT_SUBSCRIPTION_URL,
             autoStart = prefs[Keys.AUTO_START] ?: false,
             autoConnect = prefs[Keys.AUTO_CONNECT] ?: false,
+            providerId = prefs[Keys.PROVIDER_ID] ?: "",
             groupSelections = prefs[Keys.SELECTIONS]?.let { raw ->
                 runCatching { json.decodeFromString(selectionSerializer, raw) }.getOrDefault(emptyMap())
             } ?: emptyMap(),
@@ -84,6 +87,10 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setAutoConnect(enabled: Boolean) {
         context.settingsDataStore.edit { it[Keys.AUTO_CONNECT] = enabled }
+    }
+
+    suspend fun setProviderId(providerId: String) {
+        context.settingsDataStore.edit { it[Keys.PROVIDER_ID] = providerId.trim() }
     }
 
     suspend fun saveSelection(group: String, proxy: String) {

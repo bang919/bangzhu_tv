@@ -4,6 +4,7 @@ import com.xiaohei.tv.data.model.CategoryPage
 import com.xiaohei.tv.data.model.CategorySort
 import com.xiaohei.tv.data.model.HomeData
 import com.xiaohei.tv.data.model.HomeSection
+import com.xiaohei.tv.data.model.ProviderInfo
 import com.xiaohei.tv.data.model.RankingSort
 import com.xiaohei.tv.data.model.StreamInfo
 import com.xiaohei.tv.data.model.VideoCard
@@ -31,6 +32,17 @@ class MediaRepository(private val providers: ProviderRegistry) {
     private val lock = Any()
 
     val defaultProviderId: String get() = providers.default.id
+    val providerInfos: List<ProviderInfo>
+        get() = providers.all.map { ProviderInfo(it.id, it.name, it.baseUrl) }
+
+    fun supportsType(type: VideoType, providerId: String? = null): Boolean =
+        type in providers.find(providerId).supportedTypes
+
+    fun supportsRanking(providerId: String? = null): Boolean =
+        providers.find(providerId).supportsRanking
+
+    fun supportsSearchFilters(providerId: String? = null): Boolean =
+        providers.find(providerId).supportsSearchFilters
 
     fun categorySorts(providerId: String? = null): List<CategorySort> =
         providers.find(providerId).categorySorts
@@ -58,11 +70,16 @@ class MediaRepository(private val providers: ProviderRegistry) {
                 val parsed = provider.loadHome()
                 val (docs, heroDetail) = coroutineScope {
                     val docs = async {
-                        runCatching {
-                            loadCategory(VideoType.DOCUMENTARY, providerId = provider.id, force = force)
-                        }.getOrNull()
+                        if (VideoType.DOCUMENTARY !in provider.supportedTypes) {
+                            null
+                        } else {
+                            runCatching {
+                                loadCategory(VideoType.DOCUMENTARY, providerId = provider.id, force = force)
+                            }.getOrNull()
+                        }
                     }
                     val heroDetail = async {
+                        if (!provider.supportsHeroDetail) return@async null
                         parsed.hero?.let { hero ->
                             runCatching { loadDetail(hero.id, provider.id, force = false) }.getOrNull()
                         }
@@ -212,7 +229,7 @@ class MediaRepository(private val providers: ProviderRegistry) {
         val provider = providers.find(providerId)
         val cacheKey = "${provider.id}|$episodeHref"
         synchronized(lock) {
-            streamCache[cacheKey]?.takeIf { fresh(it.timestamp, STREAM_TTL) }
+            streamCache[cacheKey]?.takeIf { fresh(it.timestamp, provider.streamCacheTtlMs) }
                 ?.let { return@withContext it.value }
         }
         val stream = provider.resolveStream(episodeHref)

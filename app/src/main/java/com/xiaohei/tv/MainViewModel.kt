@@ -9,6 +9,7 @@ import com.xiaohei.tv.data.local.HistoryEntry
 import com.xiaohei.tv.data.model.CategoryPage
 import com.xiaohei.tv.data.model.CategorySort
 import com.xiaohei.tv.data.model.HomeData
+import com.xiaohei.tv.data.model.ProviderInfo
 import com.xiaohei.tv.data.model.RankingSort
 import com.xiaohei.tv.data.model.StreamInfo
 import com.xiaohei.tv.data.model.VideoCard
@@ -39,34 +40,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val clashGroups: StateFlow<List<ClashGroup>> = clash.groups
     val profileUpdatedAt: StateFlow<Long> = clash.profileUpdatedAt
 
-    val categorySorts: List<CategorySort> get() = repository.categorySorts()
-    val rankingSorts: List<RankingSort> get() = repository.rankingSorts()
+    val categorySorts: List<CategorySort> get() = repository.categorySorts(activeProviderId)
+    val rankingSorts: List<RankingSort> get() = repository.rankingSorts(activeProviderId)
+    val defaultProviderId: String get() = repository.defaultProviderId
+    val activeProviderId: String get() = settings.value.providerId.ifBlank { defaultProviderId }
+    val providerInfos: List<ProviderInfo> get() = repository.providerInfos
+    val supportsRanking: Boolean get() = repository.supportsRanking(activeProviderId)
+    val supportsSearchFilters: Boolean get() = repository.supportsSearchFilters(activeProviderId)
+
+    fun supportsType(type: VideoType): Boolean = repository.supportsType(type, activeProviderId)
+
+    fun setProvider(providerId: String) {
+        viewModelScope.launch { settingsStore.setProviderId(providerId) }
+    }
 
     fun categoryHref(type: VideoType, sort: CategorySort, providerId: String? = null): String =
-        repository.categoryHref(type, sort, providerId)
+        repository.categoryHref(type, sort, providerId ?: activeProviderId)
 
     fun categorySortOf(href: String?, providerId: String? = null): CategorySort =
-        repository.categorySortOf(href, providerId)
+        repository.categorySortOf(href, providerId ?: activeProviderId)
 
-    fun refererFor(providerId: String?): String = repository.referer(providerId)
+    fun refererFor(providerId: String?): String = repository.referer(providerId ?: activeProviderId)
 
-    suspend fun loadHome(force: Boolean = false): HomeData = repository.loadHome(force = force)
+    suspend fun loadHome(force: Boolean = false): HomeData =
+        repository.loadHome(activeProviderId, force = force)
 
     suspend fun loadCategory(type: VideoType, href: String? = null): CategoryPage =
-        repository.loadCategory(type, href)
+        repository.loadCategory(type, href, activeProviderId)
 
     suspend fun loadRanking(type: VideoType, sort: RankingSort): CategoryPage =
-        repository.loadRanking(type, sort)
+        repository.loadRanking(type, sort, activeProviderId)
 
-    suspend fun search(keyword: String): List<VideoCard> = repository.search(keyword)
+    suspend fun search(keyword: String): List<VideoCard> = repository.search(keyword, activeProviderId)
 
     suspend fun loadDetail(videoId: String, providerId: String? = null): VideoDetail =
-        repository.loadDetail(videoId, providerId)
+        repository.loadDetail(videoId, providerId ?: activeProviderId)
 
     suspend fun loadVersions(detail: VideoDetail): List<VideoCard> = repository.loadVersions(detail)
 
     suspend fun resolveStream(episodeHref: String, providerId: String? = null): StreamInfo =
-        repository.resolveStream(episodeHref, providerId)
+        repository.resolveStream(episodeHref, providerId ?: activeProviderId)
 
     fun saveProgress(
         detail: VideoDetail,

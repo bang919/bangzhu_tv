@@ -21,6 +21,11 @@ interface MediaProvider {
 
     val categorySorts: List<CategorySort> get() = CategorySort.entries
     val rankingSorts: List<RankingSort> get() = RankingSort.entries
+    val supportedTypes: Set<VideoType> get() = VideoType.entries.toSet()
+    val supportsRanking: Boolean get() = true
+    val supportsHeroDetail: Boolean get() = true
+    val supportsSearchFilters: Boolean get() = true
+    val streamCacheTtlMs: Long get() = 20 * 60 * 1000L
 
     suspend fun loadHome(): HomeData
 

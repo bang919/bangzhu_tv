@@ -32,6 +32,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xiaohei.tv.MainViewModel
 import com.xiaohei.tv.data.model.CategoryPage
 import com.xiaohei.tv.data.model.RankingSort
@@ -39,6 +40,7 @@ import com.xiaohei.tv.data.model.VideoCard
 import com.xiaohei.tv.data.model.VideoType
 import com.xiaohei.tv.ui.LoadState
 import com.xiaohei.tv.ui.components.AutoFocus
+import com.xiaohei.tv.ui.components.EmptyState
 import com.xiaohei.tv.ui.components.ErrorState
 import com.xiaohei.tv.ui.components.LoadingState
 import com.xiaohei.tv.ui.components.PosterCard
@@ -61,13 +63,18 @@ fun CategoryScreen(
     detailOpen: Boolean,
     onOpenDetail: (VideoCard) -> Unit,
 ) {
-    var href by remember(type) { mutableStateOf<String?>(null) }
-    var state by remember(type) { mutableStateOf<LoadState<CategoryPage>>(LoadState.Loading) }
-    var reloadKey by remember(type) { mutableIntStateOf(0) }
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val providerId = settings.providerId.ifBlank { viewModel.defaultProviderId }
+    val supported = viewModel.supportsType(type)
+    var href by remember(type, providerId) { mutableStateOf<String?>(null) }
+    var state by remember(type, providerId) {
+        mutableStateOf<LoadState<CategoryPage>>(LoadState.Loading)
+    }
+    var reloadKey by remember(type, providerId) { mutableIntStateOf(0) }
     val gridState = rememberLazyGridState()
     val firstFocus = remember { FocusRequester() }
     val restoreFocus = remember { FocusRequester() }
-    var lastOpenedIndex by remember(type) { mutableIntStateOf(-1) }
+    var lastOpenedIndex by remember(type, providerId) { mutableIntStateOf(-1) }
     val scope = rememberCoroutineScope()
     val scrollToTop: () -> Unit = {
         scope.launch {
@@ -82,13 +89,19 @@ fun CategoryScreen(
         }
     }
 
-    LaunchedEffect(type, href, reloadKey) {
+    LaunchedEffect(type, providerId, href, reloadKey) {
+        if (!supported) return@LaunchedEffect
         state = LoadState.Loading
         state = try {
             LoadState.Success(viewModel.loadCategory(type, href))
         } catch (error: Exception) {
             LoadState.Failure(error.friendlyMessage())
         }
+    }
+
+    if (!supported) {
+        EmptyState("该视频源不支持此功能")
+        return
     }
 
     when (val current = state) {
@@ -168,10 +181,13 @@ fun RankingScreen(
     viewModel: MainViewModel,
     onOpenDetail: (VideoCard) -> Unit,
 ) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val providerId = settings.providerId.ifBlank { viewModel.defaultProviderId }
+    val supported = viewModel.supportsRanking
     var type by remember { mutableStateOf(VideoType.MOVIE) }
     var sort by remember { mutableStateOf(RankingSort.POPULAR) }
-    var state by remember { mutableStateOf<LoadState<CategoryPage>>(LoadState.Loading) }
-    var reloadKey by remember { mutableIntStateOf(0) }
+    var state by remember(providerId) { mutableStateOf<LoadState<CategoryPage>>(LoadState.Loading) }
+    var reloadKey by remember(providerId) { mutableIntStateOf(0) }
     val gridState = rememberLazyGridState()
     val firstFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -182,13 +198,19 @@ fun RankingScreen(
         }
     }
 
-    LaunchedEffect(type, sort, reloadKey) {
+    LaunchedEffect(type, sort, providerId, reloadKey) {
+        if (!supported) return@LaunchedEffect
         state = LoadState.Loading
         state = try {
             LoadState.Success(viewModel.loadRanking(type, sort))
         } catch (error: Exception) {
             LoadState.Failure(error.friendlyMessage())
         }
+    }
+
+    if (!supported) {
+        EmptyState("该视频源不支持此功能")
+        return
     }
 
     when (val current = state) {

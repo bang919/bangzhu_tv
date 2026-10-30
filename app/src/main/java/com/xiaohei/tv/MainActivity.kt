@@ -1,6 +1,7 @@
 package com.xiaohei.tv
 
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,6 +13,15 @@ import com.xiaohei.tv.ui.XiaoheiTvApp
 import com.xiaohei.tv.ui.theme.XiaoheiTheme
 
 class MainActivity : ComponentActivity() {
+    internal var keyEventObserver: ((keyCode: Int, repeatCount: Int) -> Unit)? = null
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            keyEventObserver?.invoke(event.keyCode, event.repeatCount)
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -26,5 +36,21 @@ class MainActivity : ComponentActivity() {
                 XiaoheiTvApp(viewModel())
             }
         }
+        (application as XiaoheiApp).container.gaze.attach(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (application as XiaoheiApp).container.gaze.resume()
+    }
+
+    override fun onPause() {
+        (application as XiaoheiApp).container.gaze.pause()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        (application as XiaoheiApp).container.gaze.detach(this)
+        super.onDestroy()
     }
 }
