@@ -58,6 +58,7 @@ import com.xiaohei.tv.ui.MainTab
 import com.xiaohei.tv.ui.components.AutoFocus
 import com.xiaohei.tv.ui.components.ContinueCard
 import com.xiaohei.tv.ui.components.ErrorState
+import com.xiaohei.tv.ui.components.InputTicker
 import com.xiaohei.tv.ui.components.LoadingState
 import com.xiaohei.tv.ui.components.MetaTag
 import com.xiaohei.tv.ui.components.MoreCard
@@ -89,10 +90,12 @@ fun HomeScreen(
     val providerId = settings.providerId.ifBlank { viewModel.defaultProviderId }
     var state by remember(providerId) { mutableStateOf<LoadState<HomeData>>(LoadState.Loading) }
     var reloadKey by remember(providerId) { mutableIntStateOf(0) }
+    var loadTick by remember(providerId) { mutableIntStateOf(InputTicker.tick) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(providerId, reloadKey) {
+        loadTick = InputTicker.tick
         state = LoadState.Loading
         state = try {
             LoadState.Success(viewModel.loadHome(force = reloadKey > 0))
@@ -107,7 +110,9 @@ fun HomeScreen(
         is LoadState.Success -> {
             val data = current.data
             val playFocus = remember { FocusRequester() }
-            AutoFocus(playFocus, delays = listOf(160L, 700L, 2000L))
+            if (InputTicker.tick == loadTick) {
+                AutoFocus(playFocus, delays = listOf(160L, 700L, 2000L))
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier

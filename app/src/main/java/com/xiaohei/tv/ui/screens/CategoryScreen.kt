@@ -42,6 +42,7 @@ import com.xiaohei.tv.ui.LoadState
 import com.xiaohei.tv.ui.components.AutoFocus
 import com.xiaohei.tv.ui.components.EmptyState
 import com.xiaohei.tv.ui.components.ErrorState
+import com.xiaohei.tv.ui.components.InputTicker
 import com.xiaohei.tv.ui.components.LoadingState
 import com.xiaohei.tv.ui.components.PosterCard
 import com.xiaohei.tv.ui.components.ScreenPad
@@ -71,6 +72,7 @@ fun CategoryScreen(
         mutableStateOf<LoadState<CategoryPage>>(LoadState.Loading)
     }
     var reloadKey by remember(type, providerId) { mutableIntStateOf(0) }
+    var loadTick by remember(type, providerId) { mutableIntStateOf(InputTicker.tick) }
     val gridState = rememberLazyGridState()
     val firstFocus = remember { FocusRequester() }
     val restoreFocus = remember { FocusRequester() }
@@ -91,6 +93,7 @@ fun CategoryScreen(
 
     LaunchedEffect(type, providerId, href, reloadKey) {
         if (!supported) return@LaunchedEffect
+        loadTick = InputTicker.tick
         state = LoadState.Loading
         state = try {
             LoadState.Success(viewModel.loadCategory(type, href))
@@ -111,10 +114,13 @@ fun CategoryScreen(
             val page = current.data
             val sort = viewModel.categorySortOf(page.currentHref)
             LaunchedEffect(page.currentHref) {
+                val startTick = InputTicker.tick
                 delay(220)
-                runCatching { gridState.scrollToItem(0) }
+                if (InputTicker.tick == startTick) {
+                    runCatching { gridState.scrollToItem(0) }
+                }
             }
-            if (page.items.isNotEmpty()) AutoFocus(firstFocus)
+            if (page.items.isNotEmpty() && InputTicker.tick == loadTick) AutoFocus(firstFocus)
             CatalogGrid(
                 page = page,
                 showRank = false,
@@ -188,6 +194,7 @@ fun RankingScreen(
     var sort by remember { mutableStateOf(RankingSort.POPULAR) }
     var state by remember(providerId) { mutableStateOf<LoadState<CategoryPage>>(LoadState.Loading) }
     var reloadKey by remember(providerId) { mutableIntStateOf(0) }
+    var loadTick by remember(providerId) { mutableIntStateOf(InputTicker.tick) }
     val gridState = rememberLazyGridState()
     val firstFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -200,6 +207,7 @@ fun RankingScreen(
 
     LaunchedEffect(type, sort, providerId, reloadKey) {
         if (!supported) return@LaunchedEffect
+        loadTick = InputTicker.tick
         state = LoadState.Loading
         state = try {
             LoadState.Success(viewModel.loadRanking(type, sort))
@@ -219,10 +227,13 @@ fun RankingScreen(
         is LoadState.Success -> {
             val page = current.data
             LaunchedEffect(page.currentHref) {
+                val startTick = InputTicker.tick
                 delay(220)
-                runCatching { gridState.scrollToItem(0) }
+                if (InputTicker.tick == startTick) {
+                    runCatching { gridState.scrollToItem(0) }
+                }
             }
-            if (page.items.isNotEmpty()) AutoFocus(firstFocus)
+            if (page.items.isNotEmpty() && InputTicker.tick == loadTick) AutoFocus(firstFocus)
             CatalogGrid(
                 page = page,
                 showRank = true,

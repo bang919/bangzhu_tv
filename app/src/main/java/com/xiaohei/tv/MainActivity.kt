@@ -5,6 +5,10 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -12,6 +16,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xiaohei.tv.ui.XiaoheiTvApp
 import com.xiaohei.tv.ui.theme.XiaoheiTheme
 
+// Compose's TV default pivots the focused item to 30% of the viewport, which makes rows jump
+// on every focus move; use minimal scrolling instead.
+private val MinimalBringIntoViewSpec = object : BringIntoViewSpec {}
+
+@OptIn(ExperimentalFoundationApi::class)
 class MainActivity : ComponentActivity() {
     internal var keyEventObserver: ((keyCode: Int, repeatCount: Int) -> Unit)? = null
 
@@ -33,7 +42,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             XiaoheiTheme {
-                XiaoheiTvApp(viewModel())
+                CompositionLocalProvider(
+                    LocalBringIntoViewSpec provides MinimalBringIntoViewSpec,
+                ) {
+                    XiaoheiTvApp(viewModel())
+                }
             }
         }
         (application as XiaoheiApp).container.gaze.attach(this)

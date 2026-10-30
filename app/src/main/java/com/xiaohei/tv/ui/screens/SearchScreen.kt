@@ -51,6 +51,7 @@ import com.xiaohei.tv.data.model.VideoCard
 import com.xiaohei.tv.ui.LoadState
 import com.xiaohei.tv.ui.components.Chip
 import com.xiaohei.tv.ui.components.ErrorState
+import com.xiaohei.tv.ui.components.InputTicker
 import com.xiaohei.tv.ui.components.LoadingState
 import com.xiaohei.tv.ui.components.PosterCard
 import com.xiaohei.tv.ui.components.ScreenPad
@@ -162,19 +163,25 @@ fun SearchScreen(
     LaunchedEffect(Unit) {
         val hasResults = ui.state is LoadState.Success &&
             (ui.filteredResults()?.isNotEmpty() == true)
+        val startTick = InputTicker.tick
         listOf(120L, 450L, 1000L).forEach { wait ->
             delay(wait)
-            runCatching {
-                if (hasResults) firstResultFocus.requestFocus() else inputFocus.requestFocus()
+            if (InputTicker.tick == startTick) {
+                runCatching {
+                    if (hasResults) firstResultFocus.requestFocus() else inputFocus.requestFocus()
+                }
             }
         }
     }
 
     LaunchedEffect(ui.focusTick) {
         if (ui.focusTick == 0) return@LaunchedEffect
+        val startTick = InputTicker.tick
         delay(160)
-        runCatching { gridState.animateScrollToItem(0) }
-        runCatching { firstResultFocus.requestFocus() }
+        if (InputTicker.tick == startTick) {
+            runCatching { gridState.animateScrollToItem(0) }
+            runCatching { firstResultFocus.requestFocus() }
+        }
     }
 
     val allResults = (ui.state as? LoadState.Success)?.data.orEmpty()

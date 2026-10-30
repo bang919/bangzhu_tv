@@ -99,6 +99,7 @@ import com.xiaohei.tv.ui.LoadState
 import com.xiaohei.tv.ui.components.Chip
 import com.xiaohei.tv.ui.components.ScreenPad
 import com.xiaohei.tv.ui.components.TvButton
+import com.xiaohei.tv.ui.components.TvConfirmDialog
 import com.xiaohei.tv.ui.components.TvIconButton
 import com.xiaohei.tv.ui.components.formatDuration
 import com.xiaohei.tv.ui.friendlyMessage
@@ -138,6 +139,7 @@ fun PlayerScreen(
     var streamState by remember { mutableStateOf<LoadState<StreamInfo>>(LoadState.Loading) }
     var panel by remember { mutableStateOf(PlayerPanel.None) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var confirmExit by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
@@ -408,10 +410,15 @@ fun PlayerScreen(
         trackSelector.setParameters(params.build())
     }
 
-    BackHandler(enabled = panel != PlayerPanel.None) { closePanel() }
-    BackHandler(enabled = panel == PlayerPanel.None && controlsVisible) {
-        controlsVisible = false
-        runCatching { rootFocus.requestFocus() }
+    BackHandler(enabled = confirmExit) { confirmExit = false }
+    BackHandler(enabled = !confirmExit && panel != PlayerPanel.None) { closePanel() }
+    BackHandler(enabled = !confirmExit && panel == PlayerPanel.None) {
+        if (controlsVisible) {
+            controlsVisible = false
+            runCatching { rootFocus.requestFocus() }
+        } else {
+            confirmExit = true
+        }
     }
 
     Box(
@@ -820,6 +827,21 @@ fun PlayerScreen(
                     Text(hint, color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.Medium)
                 }
             }
+        }
+
+        if (confirmExit) {
+            TvConfirmDialog(
+                title = "退出播放",
+                message = "确定要退出播放吗？",
+                confirmText = "退出播放",
+                dismissText = "继续观看",
+                focusCancelFirst = true,
+                onConfirm = {
+                    confirmExit = false
+                    onClose()
+                },
+                onDismiss = { confirmExit = false },
+            )
         }
     }
 }

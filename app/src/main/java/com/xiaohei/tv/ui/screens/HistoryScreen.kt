@@ -42,6 +42,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.xiaohei.tv.data.local.HistoryEntry
 import com.xiaohei.tv.ui.components.EmptyState
+import com.xiaohei.tv.ui.components.InputTicker
 import com.xiaohei.tv.ui.components.ScreenHeader
 import com.xiaohei.tv.ui.components.ScreenPad
 import com.xiaohei.tv.ui.components.TvButton
@@ -75,9 +76,12 @@ fun HistoryScreen(
 
     LaunchedEffect(history.size) {
         if (history.isNotEmpty()) {
+            val startTick = InputTicker.tick
             listOf(150L, 500L, 1100L).forEach { wait ->
                 delay(wait)
-                runCatching { firstFocus.requestFocus() }
+                if (InputTicker.tick == startTick) {
+                    runCatching { firstFocus.requestFocus() }
+                }
             }
         }
     }

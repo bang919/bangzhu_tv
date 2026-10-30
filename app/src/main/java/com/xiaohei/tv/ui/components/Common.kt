@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.xiaohei.tv.data.local.HistoryEntry
@@ -878,9 +879,66 @@ fun Modifier.focusPeekIntoView(peek: Dp = 64.dp): Modifier {
 @Composable
 fun AutoFocus(requester: FocusRequester, delays: List<Long> = listOf(160L, 700L)) {
     LaunchedEffect(requester) {
+        val startTick = InputTicker.tick
         delays.forEach { wait ->
             delay(wait)
-            runCatching { requester.requestFocus() }
+            // Only grab focus if the user hasn't navigated since the screen appeared,
+            // otherwise the delayed request would yank focus (and scroll) back.
+            if (InputTicker.tick == startTick) {
+                runCatching { requester.requestFocus() }
+            }
+        }
+    }
+}
+
+/**
+ * Counts every key press so delayed focus requests can tell whether the user has already
+ * moved the focus manually and should be left alone.
+ */
+object InputTicker {
+    var tick: Int = 0
+}
+
+@Composable
+fun TvConfirmDialog(
+    title: String,
+    message: String,
+    confirmText: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    dismissText: String = "取消",
+    focusCancelFirst: Boolean = false,
+) {
+    val confirmFocus = remember { FocusRequester() }
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(120)
+        runCatching { (if (focusCancelFirst) cancelFocus else confirmFocus).requestFocus() }
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(460.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(SurfaceDark)
+                .padding(26.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(title, color = TextMain, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+            Text(message, color = TextDim, fontSize = 16.sp)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+            ) {
+                TvButton(dismissText, onClick = onDismiss, focusRequester = cancelFocus)
+                TvButton(
+                    text = confirmText,
+                    onClick = onConfirm,
+                    primary = true,
+                    focusRequester = confirmFocus,
+                )
+            }
         }
     }
 }

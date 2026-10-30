@@ -37,6 +37,8 @@ import com.xiaohei.tv.MainViewModel
 import com.xiaohei.tv.data.local.HistoryEntry
 import com.xiaohei.tv.data.model.VideoCard
 import com.xiaohei.tv.data.model.VideoDetail
+import com.xiaohei.tv.ui.components.InputTicker
+import com.xiaohei.tv.ui.components.TvConfirmDialog
 import com.xiaohei.tv.ui.screens.CategoryScreen
 import com.xiaohei.tv.ui.screens.DetailScreen
 import com.xiaohei.tv.ui.screens.HistoryScreen
@@ -68,6 +70,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var overlays by remember { mutableStateOf<List<Overlay>>(emptyList()) }
     var vpnUnlocked by remember { mutableStateOf(false) }
+    var confirmExitApp by remember { mutableStateOf(false) }
     val secretProgress = remember { intArrayOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
     var busyLabel by remember { mutableStateOf<String?>(null) }
@@ -84,6 +87,9 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     )
     DisposableEffect(activity) {
         activity?.keyEventObserver = { keyCode, repeatCount ->
+            if (repeatCount == 0) {
+                InputTicker.tick++
+            }
             if (repeatCount == 0 && gestureEnabled.value) {
                 if (keyCode == SecretKeyCodes.getOrNull(secretProgress[0])) {
                     secretProgress[0] += 1
@@ -185,6 +191,9 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     }
     BackHandler(enabled = overlays.isEmpty() && tab != MainTab.HOME) {
         tab = MainTab.HOME
+    }
+    BackHandler(enabled = overlays.isEmpty() && tab == MainTab.HOME && !confirmExitApp) {
+        confirmExitApp = true
     }
 
     LaunchedEffect(message) {
@@ -331,6 +340,21 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                 MessageBar(message!!)
             }
         }
+    }
+
+    if (confirmExitApp) {
+        TvConfirmDialog(
+            title = "退出应用",
+            message = "确定要退出帮主TV吗？",
+            confirmText = "退出",
+            dismissText = "取消",
+            focusCancelFirst = true,
+            onConfirm = {
+                confirmExitApp = false
+                activity?.finish()
+            },
+            onDismiss = { confirmExitApp = false },
+        )
     }
 }
 
