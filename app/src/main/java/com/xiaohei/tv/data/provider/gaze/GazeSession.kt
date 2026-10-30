@@ -123,9 +123,9 @@ class GazeSession(private val context: Context) {
                 filterUrl = url
                 filterPage = 1
             }
-            var guard = 0
+            val visited = mutableSetOf<Int>()
             while (filterPage != page) {
-                if (guard++ >= 16) throw IOException("无法加载第 $page 页，请重试")
+                if (!visited.add(filterPage)) throw IOException("无法加载第 $page 页，请重试")
                 val clicked = decodeJsString(evaluate(view, pageClickJs(page)))?.toIntOrNull()
                 if (clicked == null || clicked <= 0) {
                     throw IOException("无法加载第 $page 页，请重试")
@@ -190,6 +190,11 @@ class GazeSession(private val context: Context) {
                 "视频源播放页加载超时，请重试",
             )
 
+            // The page starts loading its default episode immediately. Let that request finish
+            // before selecting a different episode so its late playlist cannot be mistaken for it.
+            val initialCaptured = awaitPlaylist(view, 12_000)
+            if (initialCaptured) delay(1500) // The page may restore its last episode after the player starts.
+
             val tabSelector = "#play-source-tab-g$group"
             val tabActive = evaluate(
                 view,
@@ -212,23 +217,19 @@ class GazeSession(private val context: Context) {
                 "线路加载超时，请切换线路重试",
             )
 
-            val active = evaluate(
-                view,
-                "!!(document.querySelectorAll('$buttons')[$episodeIndex] && document.querySelectorAll('$buttons')[$episodeIndex].classList.contains('jg'))",
-            ) == "true"
-            val captured = if (active) {
-                awaitPlaylist(view, 12_000) ||
-                    (clearAndClick(view, buttons, episodeIndex) && awaitPlaylist(view, 15_000))
-            } else {
-                clearAndClick(view, buttons, episodeIndex) && awaitPlaylist(view, 15_000)
+            val active = evaluate(view, "!!(function(){var all=Array.from(document.querySelectorAll('$buttons'));var b=all[$episodeIndex];if(!b)return false;if(b.classList.contains('active') || b.getAttribute('aria-current') === 'true' || b.getAttribute('aria-pressed') === 'true')return true;return all.length > 1 && Array.from(b.classList).some(function(c){return all.filter(function(x){return x.classList.contains(c)}).length === 1;});})()") == "true"
+            val captured = if (tabActive && initialCaptured && active) true else
+                clearAndClick(view, buttons, episodeIndex) && awaitPlaylist(view, 15_000, changed = true)
+            if (!captured) {
+                Log.w(TAG, "playlist capture timed out")
+                throw IOException("视频源没有返回播放地址，请切换线路重试")
             }
-            if (!captured) throw IOException("视频源没有返回播放地址，请切换线路重试")
 
             val stats = parseJsObject(evaluate(view, RESOLVE_JS))
             if (stats?.optBoolean("ok") != true) {
                 throw IOException(stats?.optString("err")?.takeIf { it.isNotBlank() } ?: "解析播放地址失败，请重试")
             }
-            val playlist = pendingPlaylist?.takeIf { it.length > 2_000 }
+            val playlist = pendingPlaylist?.takeIf { it.trimStart().startsWith("#EXTM3U") }
                 ?: throw IOException("解析播放地址失败，请重试")
             evaluate(
                 view,
@@ -240,7 +241,7 @@ class GazeSession(private val context: Context) {
 
     private suspend fun clearAndClick(view: WebView, selector: String, index: Int): Boolean {
         pendingPlaylist = null
-        evaluate(view, "window.__gazePlaylist=null;window.__gazeSent=false;")
+        evaluate(view, "window.__gazeMinGeneration=window.__gazeGeneration||0;window.__gazePlaylist=null;window.__gazeSent=false;")
         return evaluate(
             view,
             "!!(function(){var b=document.querySelectorAll('$selector')[$index];if(!b)return false;" +
@@ -248,10 +249,10 @@ class GazeSession(private val context: Context) {
         ) == "true"
     }
 
-    private suspend fun awaitPlaylist(view: WebView, timeoutMs: Long): Boolean {
+    private suspend fun awaitPlaylist(view: WebView, timeoutMs: Long, changed: Boolean = false): Boolean {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
-            val state = pollState(view, "!!(window.__gazePlaylist && window.__gazePlaylist.indexOf('#EXTM3U')>=0)")
+            val state = pollState(view, "!!(window.__gazePlaylist && window.__gazePlaylist.indexOf('#EXTM3U')>=0${if (changed) " && window.__gazePlaylistGeneration > window.__gazeMinGeneration" else ""})")
             if (state?.optBoolean("ok") == true) return true
             delay(300)
         }
@@ -432,12 +433,11 @@ class GazeSession(private val context: Context) {
   if (document.readyState === 'loading') return false;
   var nav = document.querySelector('#pagination2');
   var mains = document.querySelector('#mains');
-  var empty = document.querySelector('.jA');
-  if (!nav || !mains || !empty) return false;
-  if (mains.classList.contains('is-loading')) return false;
+  if (!nav || !mains) return false;
+  if (mains.classList.contains('is-loading') || mains.getAttribute('aria-busy') === 'true') return false;
   var label = nav.getAttribute('aria-label') || '';
   if (label.indexOf('当前第 $page 页') < 0) return false;
-  return mains.querySelectorAll('article.eP').length > 0 || !empty.hidden;
+  return true;
 })()
 """
 
@@ -455,10 +455,9 @@ class GazeSession(private val context: Context) {
   var t = document.title || '';
   if (!t || t.indexOf('访问验证') >= 0) return false;
   var mains = document.querySelector('#mains');
-  var empty = document.querySelector('.jA');
-  if (!mains || !empty) return false;
-  if (mains.classList.contains('is-loading')) return false;
-  return mains.querySelectorAll('article.eP').length > 0 || !empty.hidden;
+  if (!mains) return false;
+  if (mains.classList.contains('is-loading') || mains.getAttribute('aria-busy') === 'true') return false;
+  return !!document.querySelector('#pagination2') || mains.querySelectorAll('article').length > 0;
 })()
 """
 
@@ -466,14 +465,14 @@ class GazeSession(private val context: Context) {
 (function () {
   var t = document.title || '';
   if (!t || t.indexOf('访问验证') >= 0) return false;
-  if (!document.querySelector('.eV h5.lb')) return false;
+  if (!document.querySelector('h5[itemprop="name"], .eV h5.lb')) return false;
   return document.readyState !== 'loading';
 })()
 """
 
         private const val IMAGES_READY_JS = """
 (function () {
-  var imgs = document.querySelectorAll('#mains article.eP img');
+  var imgs = document.querySelectorAll('#mains article img');
   if (!imgs.length) return true;
   var done = 0;
   for (var i = 0; i < imgs.length; i++) {
@@ -489,7 +488,7 @@ class GazeSession(private val context: Context) {
 (function () {
   var t = document.title || '';
   if (!t || t.indexOf('访问验证') >= 0) return false;
-  return document.querySelectorAll('article.eP').length > 3;
+  return document.querySelectorAll('article a[href*="play/"]').length > 3;
 })()
 """
 
@@ -498,16 +497,19 @@ class GazeSession(private val context: Context) {
   if (window.__gazeHookInstalled) return;
   window.__gazeHookInstalled = true;
   window.__gazePlaylist = null;
+  window.__gazeGeneration = 0;
   document.addEventListener('play', function (e) {
     try { e.target.muted = true; } catch (err) {}
   }, true);
   var orig = URL.createObjectURL.bind(URL);
   URL.createObjectURL = function (b) {
+    var generation = ++window.__gazeGeneration;
     try {
       if (b && typeof b.text === 'function') {
         b.text().then(function (text) {
-          if (text && text.indexOf('#EXTM3U') >= 0) {
+          if (generation > (window.__gazePlaylistGeneration || 0) && text && text.indexOf('#EXTM3U') >= 0) {
             window.__gazePlaylist = text;
+            window.__gazePlaylistGeneration = generation;
             console.log('GAZE_PLAYLIST ' + text.length);
           }
         }).catch(function () {});
@@ -524,10 +526,11 @@ class GazeSession(private val context: Context) {
     var raw = window.__gazePlaylist || '';
     var text = raw.replace(/^\s+/, '');
     if (text.indexOf('#EXTM3U') !== 0) return JSON.stringify({ ok: false, err: '未捕获到播放列表' });
-    if (typeof window._0x350ef8027 !== 'function' || typeof window.metaphysics !== 'function') {
+    var encrypted = text.split(/\r?\n/).some(function(line) { return line.trim().indexOf('!_') === 0; });
+    if (encrypted && (typeof window._0x350ef8027 !== 'function' || typeof window.metaphysics !== 'function')) {
       return JSON.stringify({ ok: false, err: '播放页解析组件未就绪' });
     }
-    var key = decodeURIComponent(window.killing_formalism);
+    var key = encrypted ? decodeURIComponent(window.killing_formalism) : '';
     var lines = text.split(/\r?\n/);
     var out = [];
     var resolved = 0, dropped = 0;
@@ -549,7 +552,7 @@ class GazeSession(private val context: Context) {
         out.push(line);
       }
     }
-    if (resolved < 20) {
+    if ((encrypted && resolved === 0) || (!encrypted && !out.some(function(line) { return /^https?:\/\//.test(line); }))) {
       return JSON.stringify({ ok: false, err: '播放地址解析失败，请切换线路重试' });
     }
     var rewritten = out.join('\n');

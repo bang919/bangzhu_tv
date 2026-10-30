@@ -17,35 +17,37 @@ class GazeParser(private val baseUrl: String) {
     fun parseHome(html: String): HomeData {
         val doc = Jsoup.parse(html, baseUrl)
         val sections = mutableListOf<HomeSection>()
-        doc.select("div.gQ").forEach { section ->
-            val heading = section.selectFirst("h2.cd") ?: return@forEach
+        doc.select("h2").forEach { heading ->
+            val section = heading.parents().firstOrNull { parent ->
+                parent.selectFirst("article a[href*=play/]") != null && parent.select("h2").size == 1
+            } ?: return@forEach
             val title = heading.select("a[href*=/filter]")
                 .firstOrNull { !it.text().contains("更多") }
                 ?.text()
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
-                ?: heading.selectFirst("span.v span")?.text()?.trim()
+                ?: heading.text().trim().takeIf { it.isNotBlank() }
                 ?: return@forEach
-            val cards = section.select("article.eP")
+            val cards = section.select("article")
                 .mapNotNull(::parseHomeCard)
                 .distinctBy { it.id }
-            if (cards.size >= 4) {
-                sections += HomeSection(title, cards.take(18))
+            if (cards.isNotEmpty()) {
+                sections += HomeSection(title, cards)
             }
         }
         val distinct = sections.distinctBy { it.title }
         val hero = distinct.firstOrNull { it.title.contains("推荐") }?.items?.firstOrNull()
             ?: distinct.firstOrNull()?.items?.firstOrNull()
-        return HomeData(hero = hero, sections = distinct.take(8))
+        return HomeData(hero = hero, sections = distinct)
     }
 
     fun parseCategory(html: String, state: GazeFilterState, typeLabel: String): CategoryPage {
         val doc = Jsoup.parse(html, baseUrl)
         val items = listItems(doc)
         val filters = buildList {
-            filterGroup(doc, ".hJ", "地区") { state.copy(mcountry = it, page = 1).href() }?.let(::add)
-            filterGroup(doc, ".ji", "类型") { state.copy(genre = it, page = 1).href() }?.let(::add)
-            filterGroup(doc, "#years > div.k > a[data-filter]", "年份") {
+            filterGroup(doc, "[aria-label=地区], .hJ", "地区") { state.copy(mcountry = it, page = 1).href() }?.let(::add)
+            filterGroup(doc, "[aria-label=类型], .ji", "类型") { state.copy(genre = it, page = 1).href() }?.let(::add)
+            filterGroup(doc, "#years", "年份") {
                 state.copy(years = it, page = 1).href()
             }?.let(::add)
         }
@@ -78,23 +80,23 @@ class GazeParser(private val baseUrl: String) {
 
     fun parseDetail(html: String, videoId: String): VideoDetail {
         val doc = Jsoup.parse(html, baseUrl)
-        val title = doc.selectFirst(".eV h5.lb")?.text()?.trim()
+        val title = doc.selectFirst("h5[itemprop=name], .eV h5.lb")?.text()?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: doc.selectFirst("meta[property=og:title]")?.attr("content")
                 ?.substringBefore(" 在线播放")
                 ?.trim()
                 .orEmpty()
-        val score = doc.select(".eV h5.lb").getOrNull(1)?.text()
+        val score = doc.selectFirst("h5[itemprop=name]")?.parent()?.select("h5")?.getOrNull(1)?.text()
             ?.let { Regex("""(\d+(?:\.\d+)?)""").find(it)?.value }
             .orEmpty()
         val poster = doc.selectFirst(".bD img.jM")?.let { img ->
             img.attr("data-src").takeIf { it.isNotBlank() } ?: img.attr("src")
         } ?: doc.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
-        val tags = doc.select(".eV a.dF")
+        val tags = doc.select("a[href*=/filter]")
         val formHref = tags.firstOrNull { it.attr("href").contains("mform=") }
         val area = tags.firstOrNull { it.attr("href").contains("mcountry=") }?.text().orEmpty()
         val year = tags.firstOrNull { it.attr("href").contains("years=") }?.text().orEmpty()
-        val description = doc.selectFirst("p.ev")?.text().orEmpty()
+        val description = doc.selectFirst("p[itemprop=description], p.ev")?.text().orEmpty()
         val typeName = when {
             formHref == null -> ""
             formHref.attr("href").contains("mform=1") -> "电影片"
@@ -146,7 +148,7 @@ class GazeParser(private val baseUrl: String) {
 
     private fun listItems(doc: Document): List<VideoCard> {
         val root = doc.selectFirst("#mains") ?: doc
-        return root.select("article.eP")
+        return root.select("article")
             .mapNotNull(::parseListCard)
             .distinctBy { it.id }
     }
@@ -154,7 +156,7 @@ class GazeParser(private val baseUrl: String) {
     private fun parseHomeCard(article: Element): VideoCard? {
         val link = article.selectFirst("a[href*=play/]") ?: return null
         val id = PLAY_ID.find(link.attr("href"))?.groupValues?.get(1) ?: return null
-        val title = article.selectFirst("h3 span.E")?.text()?.trim()
+        val title = article.selectFirst("h3")?.text()?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: article.selectFirst("img[data-src]")?.attr("alt")?.trim()
             ?: link.attr("aria-label").removePrefix("播放").trim()
@@ -162,8 +164,8 @@ class GazeParser(private val baseUrl: String) {
         val poster = article.selectFirst("img[data-src]")?.attr("data-src")
             ?: article.selectFirst("img[src]")?.attr("src")
             ?: ""
-        val note = article.selectFirst("div.bJ.badge-default")?.text()?.trim().orEmpty()
-        val type = article.selectFirst("div.bJ.badge-danger")?.text()?.trim()
+        val note = article.selectFirst(".badge-default")?.text()?.trim().orEmpty()
+        val type = article.selectFirst(".badge-danger")?.text()?.trim()
             ?.let(::normalizedType)
             .orEmpty()
         return VideoCard(
@@ -178,7 +180,7 @@ class GazeParser(private val baseUrl: String) {
     private fun parseListCard(article: Element): VideoCard? {
         val link = article.selectFirst("a[href*=play/]") ?: return null
         val id = PLAY_ID.find(link.attr("href"))?.groupValues?.get(1) ?: return null
-        val title = article.selectFirst("h3 span.E")?.text()?.trim()
+        val title = article.selectFirst("h3")?.text()?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: article.selectFirst("h3")?.attr("title")?.trim()
             ?: article.selectFirst("img")?.attr("alt")?.trim()

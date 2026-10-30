@@ -54,6 +54,15 @@ enum class MainTab(val label: String, val videoType: VideoType? = null) {
     ANIME("动漫", VideoType.ANIME),
     VARIETY("综艺", VideoType.VARIETY),
     DOCUMENTARY("纪录", VideoType.DOCUMENTARY),
+    SHORT_RANK("榜单", VideoType.SHORT_RANK),
+    SHORT_RECOMMEND("推荐", VideoType.SERIES),
+    SHORT_DISCOVERY("找剧", VideoType.SHORT_DISCOVERY),
+    SHORT_FEED("推荐流", VideoType.SHORT_FEED),
+    GAZE_ALL("全部", VideoType.GAZE_ALL),
+    CHINESE_ANIME("国漫", VideoType.CHINESE_ANIME),
+    REAL_DRAMA("真人剧", VideoType.REAL_DRAMA),
+    COMIC_DRAMA("漫剧", VideoType.COMIC_DRAMA),
+    AI_DRAMA("AI剧", VideoType.AI_DRAMA),
     HISTORY("历史"),
     SETTINGS("设置"),
 }
@@ -89,6 +98,7 @@ private val VpnError = Color(0xFFFF6B6B)
 @Composable
 fun TopNav(
     current: MainTab,
+    tabs: List<MainTab>,
     clashPhase: ClashPhase,
     vpnEnabled: Boolean,
     vpnVisible: Boolean,
@@ -126,12 +136,12 @@ fun TopNav(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NavTabs.forEachIndexed { index, tab ->
+            tabs.forEachIndexed { index, tab ->
                 NavItem(
                     label = tab.label,
                     selected = tab == current,
                     onClick = { onSelect(tab) },
-                    modifier = if (index == NavTabs.lastIndex) {
+                    modifier = if (index == tabs.lastIndex) {
                         Modifier.focusProperties { right = searchFocus }
                     } else {
                         Modifier

@@ -21,7 +21,7 @@ interface MediaProvider {
 
     val categorySorts: List<CategorySort> get() = CategorySort.entries
     val rankingSorts: List<RankingSort> get() = RankingSort.entries
-    val supportedTypes: Set<VideoType> get() = VideoType.entries.toSet()
+    val supportedTypes: Set<VideoType> get() = setOf(VideoType.MOVIE, VideoType.SERIES, VideoType.ANIME, VideoType.VARIETY, VideoType.DOCUMENTARY)
     val supportsRanking: Boolean get() = true
     val supportsHeroDetail: Boolean get() = true
     val supportsSearchFilters: Boolean get() = true
@@ -31,13 +31,15 @@ interface MediaProvider {
 
     suspend fun loadCategory(type: VideoType, href: String? = null): CategoryPage
 
-    suspend fun loadRanking(type: VideoType, sort: RankingSort): CategoryPage
+    suspend fun loadRanking(type: VideoType, sort: RankingSort, href: String? = null): CategoryPage
 
     fun categoryHref(type: VideoType, sort: CategorySort): String
 
     fun categorySortOf(href: String?): CategorySort = CategorySort.LATEST
 
     suspend fun search(keyword: String): List<VideoCard>
+    suspend fun searchPage(keyword: String, page: Int): com.xiaohei.tv.data.model.SearchPage =
+        com.xiaohei.tv.data.model.SearchPage(if (page == 1) search(keyword) else emptyList(), false)
 
     suspend fun loadDetail(videoId: String): VideoDetail
 

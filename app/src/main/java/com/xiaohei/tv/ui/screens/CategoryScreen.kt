@@ -123,7 +123,7 @@ fun CategoryScreen(
             if (page.items.isNotEmpty() && InputTicker.tick == loadTick) AutoFocus(firstFocus)
             CatalogGrid(
                 page = page,
-                showRank = false,
+                showRank = type == VideoType.SHORT_RANK,
                 gridState = gridState,
                 firstFocus = firstFocus,
                 onOpenDetail = { card, index ->
@@ -135,12 +135,12 @@ fun CategoryScreen(
                 header = {
                     CatalogHeader(
                         title = page.title.ifBlank { type.label },
-                        subtitle = "第 ${page.currentPage} / ${page.totalPages} 页 · 共 ${page.items.size} 部",
+                        subtitle = (if (page.totalPagesKnown) "第 ${page.currentPage} / ${page.totalPages} 页" else "第 ${page.currentPage} 页") + " · 本页 ${page.items.size} 部",
                     )
                     Spacer(Modifier.height(10.dp))
-                    TvFilterBar(
+                    if (viewModel.categorySorts.size > 1 || page.filters.isNotEmpty()) TvFilterBar(
                         specs = buildList {
-                            add(
+                            if (viewModel.categorySorts.size > 1) add(
                                 TvFilterSpec(
                                     key = "sort",
                                     label = "排序",
@@ -192,6 +192,7 @@ fun RankingScreen(
     val supported = viewModel.supportsRanking
     var type by remember { mutableStateOf(VideoType.MOVIE) }
     var sort by remember { mutableStateOf(RankingSort.POPULAR) }
+    var href by remember(providerId, type, sort) { mutableStateOf<String?>(null) }
     var state by remember(providerId) { mutableStateOf<LoadState<CategoryPage>>(LoadState.Loading) }
     var reloadKey by remember(providerId) { mutableIntStateOf(0) }
     var loadTick by remember(providerId) { mutableIntStateOf(InputTicker.tick) }
@@ -205,12 +206,12 @@ fun RankingScreen(
         }
     }
 
-    LaunchedEffect(type, sort, providerId, reloadKey) {
+    LaunchedEffect(type, sort, providerId, reloadKey, href) {
         if (!supported) return@LaunchedEffect
         loadTick = InputTicker.tick
         state = LoadState.Loading
         state = try {
-            LoadState.Success(viewModel.loadRanking(type, sort))
+            LoadState.Success(viewModel.loadRanking(type, sort, href))
         } catch (error: Exception) {
             LoadState.Failure(error.friendlyMessage())
         }
@@ -268,7 +269,7 @@ fun RankingScreen(
                         onFocus = scrollToTop,
                     )
                 },
-                pager = null,
+                pager = { PagerBar(page, onPrev = { href = page.prevHref }, onNext = { href = page.nextHref }) },
             )
         }
     }
@@ -333,7 +334,7 @@ private fun CatalogGrid(
                 PosterCard(
                     card = card,
                     onClick = { onOpenDetail(card, index) },
-                    rank = if (showRank) index + 1 else null,
+                    rank = if (showRank) index + 1 + (page.currentPage - 1) * 20 else null,
                     focusRequester = when {
                         index == focusRestoreIndex -> focusRestore
                         index == 0 -> firstFocus
@@ -368,7 +369,7 @@ private fun PagerBar(page: CategoryPage, onPrev: () -> Unit, onNext: () -> Unit)
             TvButton("上一页", onClick = onPrev)
         }
         Text(
-            text = "第 ${page.currentPage} / ${page.totalPages} 页",
+            text = if (page.totalPagesKnown) "第 ${page.currentPage} / ${page.totalPages} 页" else "第 ${page.currentPage} 页",
             color = TextMain,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,

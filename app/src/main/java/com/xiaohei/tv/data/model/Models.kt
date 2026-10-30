@@ -47,6 +47,7 @@ data class CategoryPage(
     val totalPages: Int,
     val prevHref: String?,
     val nextHref: String?,
+    val totalPagesKnown: Boolean = true,
 )
 
 data class Episode(
@@ -86,6 +87,8 @@ data class StreamInfo(
     val source: String = "",
     val note: String = "",
     val mimeType: String? = null,
+    val hongguoKey: ByteArray? = null,
+    val hongguo: Boolean = false,
 )
 
 data class ProviderInfo(
@@ -106,7 +109,17 @@ enum class VideoType(val label: String) {
     ANIME("动漫片"),
     VARIETY("综艺片"),
     DOCUMENTARY("纪录片"),
+    REAL_DRAMA("真人剧"),
+    COMIC_DRAMA("漫剧"),
+    AI_DRAMA("AI剧"),
+    SHORT_RANK("短剧榜单"),
+    SHORT_DISCOVERY("找剧"),
+    SHORT_FEED("推荐流"),
+    GAZE_ALL("全部影视"),
+    CHINESE_ANIME("国漫"),
 }
+
+data class SearchPage(val items: List<VideoCard>, val hasMore: Boolean)
 
 enum class CategorySort(val label: String) {
     LATEST("最新"),

@@ -68,10 +68,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun loadCategory(type: VideoType, href: String? = null): CategoryPage =
         repository.loadCategory(type, href, activeProviderId)
 
-    suspend fun loadRanking(type: VideoType, sort: RankingSort): CategoryPage =
-        repository.loadRanking(type, sort, activeProviderId)
+    suspend fun loadRanking(type: VideoType, sort: RankingSort, href: String? = null): CategoryPage =
+        repository.loadRanking(type, sort, activeProviderId, href)
 
     suspend fun search(keyword: String): List<VideoCard> = repository.search(keyword, activeProviderId)
+    suspend fun searchPage(keyword: String, page: Int) = repository.searchPage(keyword, page, activeProviderId)
 
     suspend fun loadDetail(videoId: String, providerId: String? = null): VideoDetail =
         repository.loadDetail(videoId, providerId ?: activeProviderId)
@@ -111,8 +112,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteHistory(videoId: String) {
-        viewModelScope.launch { container.historyDao.delete(videoId) }
+    fun deleteHistory(entry: HistoryEntry) {
+        viewModelScope.launch { container.historyDao.delete(entry.providerId, entry.videoId) }
     }
 
     fun clearHistory() {

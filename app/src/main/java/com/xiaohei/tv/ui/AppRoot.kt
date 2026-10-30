@@ -80,6 +80,14 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     val clashStatus by viewModel.clashStatus.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val activeProviderId = settings.providerId.ifBlank { viewModel.defaultProviderId }
+    val visibleTabs = if (activeProviderId == "hongguo") {
+        listOf(MainTab.HOME, MainTab.SHORT_RANK, MainTab.SHORT_RECOMMEND, MainTab.SHORT_FEED, MainTab.SHORT_DISCOVERY, MainTab.REAL_DRAMA, MainTab.COMIC_DRAMA, MainTab.AI_DRAMA)
+    } else if (activeProviderId == "gaze") {
+        listOf(MainTab.HOME, MainTab.GAZE_ALL, MainTab.MOVIE, MainTab.SERIES, MainTab.ANIME, MainTab.CHINESE_ANIME)
+    } else {
+        NavTabs.filter { it == MainTab.HOME || (it == MainTab.RANKING && viewModel.supportsRanking) ||
+            (it.videoType != null && viewModel.supportsType(it.videoType)) }
+    }
 
     val activity = LocalContext.current as? MainActivity
     val gestureEnabled = rememberUpdatedState(
@@ -107,6 +115,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
 
     LaunchedEffect(activeProviderId) {
         searchState.reset()
+        if (tab != MainTab.SETTINGS && tab != MainTab.HISTORY && tab !in visibleTabs) tab = MainTab.HOME
     }
 
     val top = overlays.lastOrNull()
@@ -172,7 +181,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
             busyLabel = "正在打开「${card.title}」…"
             try {
                 val detail = viewModel.loadDetail(card.id, card.providerId)
-                val entry = history.firstOrNull { it.videoId == detail.id }
+                val entry = history.firstOrNull { it.videoId == detail.id && it.providerId == detail.providerId }
                 if (entry != null) {
                     playHistory(detail, entry)
                 } else {
@@ -245,6 +254,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
             ) {
                 TopNav(
                     current = tab,
+                    tabs = visibleTabs,
                     clashPhase = clashStatus.phase,
                     vpnEnabled = settings.vpnEnabled,
                     vpnVisible = vpnUnlocked,

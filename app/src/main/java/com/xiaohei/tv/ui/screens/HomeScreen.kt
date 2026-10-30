@@ -166,7 +166,7 @@ fun HomeScreen(
                     HomeSectionRow(
                         section = section,
                         onOpenDetail = onOpenDetail,
-                        onMore = { onOpenTab(tabForSection(section.title)) },
+                        onMore = { onOpenTab(tabForSection(section.title, providerId)) },
                     )
                 }
 
@@ -178,10 +178,13 @@ fun HomeScreen(
     }
 }
 
-private fun tabForSection(title: String): MainTab = when {
+private fun tabForSection(title: String, providerId: String): MainTab = when {
+    providerId == "hongguo" -> MainTab.SHORT_RECOMMEND
+    providerId == "gaze" && title.contains("国漫") -> MainTab.CHINESE_ANIME
+    providerId == "gaze" && !listOf("电影", "剧", "动漫", "动画", "番剧").any(title::contains) -> MainTab.GAZE_ALL
     title.contains("电影") -> MainTab.MOVIE
-    title.contains("剧") -> MainTab.SERIES
     title.contains("动漫") || title.contains("动画") || title.contains("番剧") -> MainTab.ANIME
+    title.contains("剧") -> MainTab.SERIES
     title.contains("综艺") -> MainTab.VARIETY
     title.contains("纪录") -> MainTab.DOCUMENTARY
     else -> MainTab.MOVIE
@@ -313,7 +316,7 @@ private fun HomeSectionRow(
             contentPadding = PaddingValues(horizontal = ScreenPad),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(section.items.take(14), key = { it.id }) { card ->
+            items(section.items, key = { it.id }) { card ->
                 PosterCard(
                     card = card,
                     onClick = { onOpenDetail(card) },

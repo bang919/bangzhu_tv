@@ -27,7 +27,7 @@ class GazeProvider(
     override val referer: String get() = ""
 
     override val supportedTypes: Set<VideoType> =
-        setOf(VideoType.MOVIE, VideoType.SERIES, VideoType.ANIME)
+        setOf(VideoType.GAZE_ALL, VideoType.MOVIE, VideoType.SERIES, VideoType.ANIME, VideoType.CHINESE_ANIME)
     override val supportsRanking: Boolean = false
     override val supportsHeroDetail: Boolean = false
     override val supportsSearchFilters: Boolean = false
@@ -62,7 +62,7 @@ class GazeProvider(
         return parser.parseCategory(html, state, type.label)
     }
 
-    override suspend fun loadRanking(type: VideoType, sort: RankingSort): CategoryPage =
+    override suspend fun loadRanking(type: VideoType, sort: RankingSort, href: String?): CategoryPage =
         throw UnsupportedFeatureException()
 
     override fun categoryHref(type: VideoType, sort: CategorySort): String =
@@ -74,6 +74,12 @@ class GazeProvider(
     override suspend fun search(keyword: String): List<VideoCard> {
         val url = GazeFilterState.withSearch(keyword).toUrl(baseUrl)
         return parser.parseSearch(session.loadFilterPage(url, 1))
+    }
+
+    override suspend fun searchPage(keyword: String, page: Int): com.xiaohei.tv.data.model.SearchPage {
+        val state = GazeFilterState.withSearch(keyword).copy(page = page.coerceAtLeast(1))
+        val result = parser.parseCategory(session.loadFilterPage(state.toUrl(baseUrl), state.page), state, "搜索")
+        return com.xiaohei.tv.data.model.SearchPage(result.items, result.nextHref != null)
     }
 
     override suspend fun loadDetail(videoId: String): VideoDetail {

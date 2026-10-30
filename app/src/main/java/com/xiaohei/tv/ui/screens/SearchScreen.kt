@@ -90,6 +90,8 @@ class SearchUiState {
     var reloadKey by mutableIntStateOf(0)
     var focusTick by mutableIntStateOf(0)
     var loadedKeyword by mutableStateOf("")
+    var page by mutableIntStateOf(1)
+    var hasMore by mutableStateOf(false)
     val recentSearches = mutableStateListOf<String>()
 
     fun submit(keyword: String) {
@@ -101,6 +103,8 @@ class SearchUiState {
             return
         }
         activeKeyword = trimmed
+        page = 1
+        hasMore = false
         loadedKeyword = ""
         state = null
         if (!recentSearches.contains(trimmed)) {
@@ -119,6 +123,8 @@ class SearchUiState {
         areaFilter = "全部"
         state = null
         loadedKeyword = ""
+        page = 1
+        hasMore = false
         reloadKey = 0
     }
 }
@@ -142,17 +148,18 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(ui.activeKeyword, ui.reloadKey) {
+    LaunchedEffect(ui.activeKeyword, ui.reloadKey, ui.page) {
         val keyword = ui.activeKeyword
         if (keyword.isBlank()) {
             ui.state = null
             ui.loadedKeyword = ""
             return@LaunchedEffect
         }
-        if (keyword == ui.loadedKeyword && ui.state is LoadState.Success) return@LaunchedEffect
         ui.state = LoadState.Loading
         ui.state = try {
-            LoadState.Success(viewModel.search(keyword))
+            val page = viewModel.searchPage(keyword, ui.page)
+            ui.hasMore = page.hasMore
+            LoadState.Success(page.items)
         } catch (error: Exception) {
             LoadState.Failure(error.friendlyMessage())
         }
@@ -311,8 +318,8 @@ fun SearchScreen(
                     if (ui.activeKeyword.isNotBlank() && ui.state is LoadState.Success) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "「${ui.activeKeyword}」共 ${filtered.size} 个结果" +
-                                    if (filtered.size != allResults.size) "（全部 ${allResults.size} 个）" else "",
+                                text = "「${ui.activeKeyword}」本页 ${filtered.size} 个结果" +
+                                    if (filtered.size != allResults.size) "（本页全部 ${allResults.size} 个）" else "",
                                 color = TextDim,
                                 fontSize = 14.sp,
                                 modifier = Modifier.weight(1f),
@@ -416,6 +423,15 @@ fun SearchScreen(
                                     .joinToString(" · "),
                                 focusRequester = if (card == filtered.first()) firstResultFocus else null,
                             )
+                        }
+                    }
+                    if (ui.page > 1 || ui.hasMore) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (ui.page > 1) TvButton(text = "上一页", onClick = { ui.page-- })
+                                Text("第 ${ui.page} 页", color = TextDim)
+                                if (ui.hasMore) TvButton(text = "下一页", onClick = { ui.page++ })
+                            }
                         }
                     }
                 }

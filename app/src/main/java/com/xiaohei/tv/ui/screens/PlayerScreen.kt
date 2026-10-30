@@ -195,6 +195,7 @@ fun PlayerScreen(
     val textChoices = remember(tracks) { textChoicesOf(tracks) }
 
     val currentSource = detail.sources.getOrNull(sourceIndex)
+    var hongguoVideo by remember { mutableStateOf<com.hongguotv.core.RemoteVideo?>(null) }
     val currentEpisode = currentSource?.episodes?.getOrNull(episodeIndex)
     val hasNext = currentSource?.episodes?.let { episodeIndex + 1 < it.size } == true
 
@@ -226,6 +227,7 @@ fun PlayerScreen(
         }
         exo.addListener(listener)
         onDispose {
+            hongguoVideo?.close()
             val snapshot = latestSave.value
             viewModel.saveProgress(
                 snapshot.detail,
@@ -265,15 +267,28 @@ fun PlayerScreen(
         )
         exo.stop()
         exo.clearMediaItems()
+        hongguoVideo?.close()
+        hongguoVideo = null
         try {
             val info = viewModel.resolveStream(episode.href, detail.providerId)
             streamState = LoadState.Success(info)
-            exo.setMediaItem(
-                MediaItem.Builder()
-                    .setUri(info.url)
-                    .apply { info.mimeType?.let(::setMimeType) }
-                    .build()
-            )
+            val item = MediaItem.Builder().setUri(info.url)
+                .apply { info.mimeType?.let(::setMimeType) }.build()
+            if (info.hongguo) {
+                val video = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.hongguotv.core.RemoteVideo(
+                        okhttp3.OkHttpClient(),
+                        com.hongguotv.core.StreamInfo(info.url, info.hongguoKey, info.note),
+                    ).prepare()
+                }
+                val factory = androidx.media3.datasource.DataSource.Factory {
+                    com.hongguotv.nativeapp.VideoDataSource(video)
+                }
+                hongguoVideo = video
+                exo.setMediaSource(androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(factory).createMediaSource(item))
+            } else {
+                exo.setMediaItem(item)
+            }
             exo.prepare()
             val resumeAt = if (!hasStarted) initialPosition else 0L
             hasStarted = true

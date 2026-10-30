@@ -414,14 +414,22 @@ private fun DetailHeader(
                             primary = true,
                             icon = Icons.Filled.PlayArrow,
                             focusRequester = playFocus,
-                            modifier = if (episodeFocus != null) {
+                            modifier = if (entry == null && episodeFocus != null) {
                                 Modifier.focusProperties { right = episodeFocus }
                             } else {
                                 Modifier
                             },
                         )
                         if (entry != null) {
-                            TvButton("从头播放", onClick = onPlayFirst)
+                            TvButton(
+                                text = "从头播放",
+                                onClick = onPlayFirst,
+                                modifier = if (episodeFocus != null) {
+                                    Modifier.focusProperties { right = episodeFocus }
+                                } else {
+                                    Modifier
+                                },
+                            )
                         }
                     }
                 }

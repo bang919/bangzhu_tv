@@ -47,7 +47,8 @@ data class GazeFilterState(
                 VideoType.MOVIE -> "1"
                 VideoType.SERIES -> "2"
                 VideoType.ANIME -> "bangumi"
-                VideoType.VARIETY, VideoType.DOCUMENTARY -> ALL
+                VideoType.CHINESE_ANIME -> "chinese_cartoon"
+                else -> ALL
             },
         )
 

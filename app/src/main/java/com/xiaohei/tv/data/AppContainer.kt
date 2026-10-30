@@ -5,6 +5,7 @@ import com.xiaohei.tv.clash.ClashController
 import com.xiaohei.tv.data.local.HistoryDatabase
 import com.xiaohei.tv.data.provider.ProviderRegistry
 import com.xiaohei.tv.data.provider.XiaoheimiProvider
+import com.xiaohei.tv.data.provider.HongguoProvider
 import com.xiaohei.tv.data.provider.gaze.GazeProvider
 import com.xiaohei.tv.data.provider.gaze.GazeSession
 import com.xiaohei.tv.data.remote.SiteHttpClient
@@ -20,6 +21,7 @@ class AppContainer(context: Context) {
         listOf(
             XiaoheimiProvider(http),
             GazeProvider(http, gaze),
+            HongguoProvider(),
         )
     )
     val repository = MediaRepository(providers)

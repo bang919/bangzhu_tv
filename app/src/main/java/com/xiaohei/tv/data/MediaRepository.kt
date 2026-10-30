@@ -126,13 +126,13 @@ class MediaRepository(private val providers: ProviderRegistry) {
         force: Boolean = false,
     ): CategoryPage = withContext(Dispatchers.IO) {
         val provider = providers.find(providerId)
-        val requestKey = "${provider.id}|${href ?: type.name}"
+        val requestKey = "${provider.id}|${type.name}|${href.orEmpty()}"
         if (!force) {
             categoryCache[requestKey]?.takeIf { fresh(it.timestamp, CATEGORY_TTL) }
                 ?.let { return@withContext it.value }
         }
         val page = provider.loadCategory(type, href).stamp(provider)
-        val cacheKey = "${provider.id}|${page.currentHref}"
+        val cacheKey = "${provider.id}|${type.name}|${page.currentHref}"
         categoryCache[cacheKey] = Timed(page, System.currentTimeMillis())
         if (cacheKey != requestKey) categoryCache[requestKey] = Timed(page, System.currentTimeMillis())
         trimCache(categoryCache)
@@ -143,12 +143,13 @@ class MediaRepository(private val providers: ProviderRegistry) {
         type: VideoType,
         sort: RankingSort,
         providerId: String? = null,
+        href: String? = null,
     ): CategoryPage = withContext(Dispatchers.IO) {
         val provider = providers.find(providerId)
-        val cacheKey = "${provider.id}|ranking:${type.name}:${sort.name}"
+        val cacheKey = "${provider.id}|ranking:${type.name}:${sort.name}:${href.orEmpty()}"
         categoryCache[cacheKey]?.takeIf { fresh(it.timestamp, CATEGORY_TTL) }
             ?.let { return@withContext it.value }
-        val page = provider.loadRanking(type, sort).stamp(provider)
+        val page = provider.loadRanking(type, sort, href).stamp(provider)
         categoryCache[cacheKey] = Timed(page, System.currentTimeMillis())
         trimCache(categoryCache)
         page
@@ -172,6 +173,13 @@ class MediaRepository(private val providers: ProviderRegistry) {
         trimCache(searchCache, 50)
         results
     }
+
+    suspend fun searchPage(keyword: String, page: Int, providerId: String? = null): com.xiaohei.tv.data.model.SearchPage =
+        withContext(Dispatchers.IO) {
+            val provider = providers.find(providerId)
+            val result = provider.searchPage(keyword.trim(), page)
+            result.copy(items = result.items.map { it.stamp(provider) })
+        }
 
     suspend fun loadDetail(
         videoId: String,

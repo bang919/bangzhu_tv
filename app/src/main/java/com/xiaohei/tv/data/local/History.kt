@@ -6,7 +6,6 @@ import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
-import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -14,9 +13,9 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "history")
+@Entity(tableName = "history", primaryKeys = ["providerId", "videoId"])
 data class HistoryEntry(
-    @PrimaryKey val videoId: String,
+    val videoId: String,
     val title: String,
     val poster: String,
     val typeName: String = "",
@@ -39,20 +38,20 @@ interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<HistoryEntry>>
 
-    @Query("SELECT * FROM history WHERE videoId = :videoId LIMIT 1")
-    suspend fun find(videoId: String): HistoryEntry?
+    @Query("SELECT * FROM history WHERE providerId = :providerId AND videoId = :videoId LIMIT 1")
+    suspend fun find(providerId: String, videoId: String): HistoryEntry?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: HistoryEntry)
 
-    @Query("DELETE FROM history WHERE videoId = :videoId")
-    suspend fun delete(videoId: String)
+    @Query("DELETE FROM history WHERE providerId = :providerId AND videoId = :videoId")
+    suspend fun delete(providerId: String, videoId: String)
 
     @Query("DELETE FROM history")
     suspend fun clear()
 }
 
-@Database(entities = [HistoryEntry::class], version = 2, exportSchema = false)
+@Database(entities = [HistoryEntry::class], version = 3, exportSchema = false)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 
@@ -66,6 +65,15 @@ abstract class HistoryDatabase : RoomDatabase() {
             }
         }
 
+        private val migration2To3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE history_new (videoId TEXT NOT NULL, title TEXT NOT NULL, poster TEXT NOT NULL, typeName TEXT NOT NULL, remarks TEXT NOT NULL, sourceIndex INTEGER NOT NULL, episodeIndex INTEGER NOT NULL, episodeName TEXT NOT NULL, episodeHref TEXT NOT NULL, positionMs INTEGER NOT NULL, durationMs INTEGER NOT NULL, updatedAt INTEGER NOT NULL, providerId TEXT NOT NULL, PRIMARY KEY(providerId, videoId))")
+                db.execSQL("INSERT INTO history_new SELECT videoId, title, poster, typeName, remarks, sourceIndex, episodeIndex, episodeName, episodeHref, positionMs, durationMs, updatedAt, CASE WHEN providerId = '' THEN 'xiaoheimi' ELSE providerId END FROM history")
+                db.execSQL("DROP TABLE history")
+                db.execSQL("ALTER TABLE history_new RENAME TO history")
+            }
+        }
+
         fun get(context: Context): HistoryDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -73,7 +81,7 @@ abstract class HistoryDatabase : RoomDatabase() {
                     HistoryDatabase::class.java,
                     "xiaohei.db",
                 )
-                    .addMigrations(migration1To2)
+                    .addMigrations(migration1To2, migration2To3)
                     .build()
                     .also { instance = it }
             }

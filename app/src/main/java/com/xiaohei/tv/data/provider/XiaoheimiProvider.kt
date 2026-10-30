@@ -31,8 +31,8 @@ class XiaoheimiProvider(
         return parser.parseCategory(html, type.siteId(), type.label, url)
     }
 
-    override suspend fun loadRanking(type: VideoType, sort: RankingSort): CategoryPage =
-        loadCategory(type, "$baseUrl/index.php/vod/show/by/${sort.path()}/id/${type.siteId()}.html")
+    override suspend fun loadRanking(type: VideoType, sort: RankingSort, href: String?): CategoryPage =
+        loadCategory(type, href ?: "$baseUrl/index.php/vod/show/by/${sort.path()}/id/${type.siteId()}.html")
 
     override fun categoryHref(type: VideoType, sort: CategorySort): String =
         "$baseUrl/index.php/vod/show/by/${sort.path()}/id/${type.siteId()}.html"
@@ -54,6 +54,19 @@ class XiaoheimiProvider(
         return parser.parseSearch(http.get(url, referer))
     }
 
+    override suspend fun searchPage(keyword: String, page: Int): com.xiaohei.tv.data.model.SearchPage {
+        require(page > 0)
+        val url = if (page == 1) {
+            "$baseUrl/index.php/vod/search.html".toHttpUrl().newBuilder()
+                .addQueryParameter("wd", keyword).build().toString()
+        } else {
+            "$baseUrl/index.php/vod/search/page/$page/wd/".toHttpUrl().newBuilder()
+                .addPathSegment("$keyword.html").build().toString()
+        }
+        val html = http.get(url, referer)
+        return com.xiaohei.tv.data.model.SearchPage(parser.parseSearch(html), parser.searchHasNext(html, page))
+    }
+
     override suspend fun loadDetail(videoId: String): VideoDetail {
         val html = http.get("$baseUrl/index.php/vod/detail/id/$videoId.html", referer)
         return parser.parseDetail(html, videoId)
@@ -73,6 +86,7 @@ class XiaoheimiProvider(
         VideoType.VARIETY -> 3
         VideoType.ANIME -> 4
         VideoType.DOCUMENTARY -> 21
+        else -> throw UnsupportedFeatureException()
     }
 
     private fun RankingSort.path(): String = when (this) {

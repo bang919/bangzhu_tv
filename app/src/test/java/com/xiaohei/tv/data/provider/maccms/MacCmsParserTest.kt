@@ -31,10 +31,17 @@ class MacCmsParserTest {
         assertTrue(home.sections.any { it.title == "最新动漫片" })
         assertTrue(home.sections.none { it.title.contains("榜单") })
         home.sections.forEach { section ->
-            assertTrue(section.items.size in 4..18)
+            assertTrue(section.items.isNotEmpty())
             assertEquals(section.items.size, section.items.distinctBy { it.id }.size)
             assertTrue(section.items.all { it.id.isNotBlank() && it.title.isNotBlank() })
         }
+    }
+
+    @Test
+    fun `search pager reports next page and stops at last page`() {
+        val html = """<ul class="myui-page"><li><a>1/350</a></li><li><a href="/index.php/vod/search/page/2/wd/test.html">下一页</a></li></ul>"""
+        assertTrue(parser.searchHasNext(html, 1))
+        assertTrue(!parser.searchHasNext(html.replace("1/350", "350/350"), 350))
     }
 
     @Test

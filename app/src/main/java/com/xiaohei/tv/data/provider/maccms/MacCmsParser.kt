@@ -38,8 +38,8 @@ class MacCmsParser(
             val cards = panel.select("ul.myui-vodlist > li")
                 .mapNotNull(::parseCard)
                 .distinctBy { it.id }
-            if (cards.size >= 4) {
-                sections += HomeSection(title, cards.take(18))
+            if (cards.isNotEmpty()) {
+                sections += HomeSection(title, cards)
             }
         }
 
@@ -54,7 +54,7 @@ class MacCmsParser(
 
         return HomeData(
             hero = hero,
-            sections = ordered.take(10),
+            sections = ordered,
         )
     }
 
@@ -146,6 +146,15 @@ class MacCmsParser(
         return parseCards(doc.select(".myui-vodlist li"))
     }
 
+    fun searchHasNext(html: String, currentPage: Int): Boolean {
+        val pager = Jsoup.parse(html).selectFirst("ul.myui-page") ?: return false
+        val fraction = Regex("""(\d+)\s*/\s*(\d+)""").find(pager.text())
+        if (fraction != null) return currentPage < (fraction.groupValues[2].toIntOrNull() ?: currentPage)
+        val next = pager.select("a[href]").firstOrNull { it.text().contains("下一页") } ?: return false
+        val page = Regex("""/page/(\d+)""").find(next.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+        return page != null && page > currentPage
+    }
+
     fun parseDetail(html: String, fallbackId: String = ""): VideoDetail {
         val doc = Jsoup.parse(html)
         val detailRoot = doc.selectFirst(".myui-content__detail")
@@ -187,7 +196,6 @@ class MacCmsParser(
             .mapNotNull(::parseCard)
             .distinctBy { it.id }
             .filter { it.id != id }
-            .take(18)
 
         return VideoDetail(
             id = id,

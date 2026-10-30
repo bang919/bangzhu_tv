@@ -59,7 +59,7 @@ import kotlinx.coroutines.launch
 fun HistoryScreen(
     history: List<HistoryEntry>,
     onResume: (HistoryEntry) -> Unit,
-    onDelete: (String) -> Unit,
+    onDelete: (HistoryEntry) -> Unit,
     onClear: () -> Unit,
 ) {
     var pendingDelete by remember { mutableStateOf<HistoryEntry?>(null) }
@@ -134,7 +134,7 @@ fun HistoryScreen(
             message = "确定删除「${entry.title}」的观看记录吗？",
             confirmText = "删除",
             onConfirm = {
-                onDelete(entry.videoId)
+                onDelete(entry)
                 pendingDelete = null
             },
             onDismiss = { pendingDelete = null },
