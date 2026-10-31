@@ -32,6 +32,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.xiaohei.tv.data.local.EpisodeProgress
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -139,6 +143,8 @@ fun DetailScreen(
             val selectedSource = detail.sources.getOrNull(sourceIndex)
             val selectedEpisode = selectedSource?.episodes?.getOrNull(episodeIndex)
             val listState = rememberLazyListState()
+            var episodesOpen by remember(detail.id) { mutableStateOf(false) }
+            val episodeRecords by remember(detail.id, detail.providerId) { viewModel.episodeProgress(detail.providerId, detail.id) }.collectAsState(initial = emptyList())
 
             LaunchedEffect(detail.id) {
                 delay(220)
@@ -151,8 +157,6 @@ fun DetailScreen(
                     .fillMaxSize()
                     .background(BgDark),
             ) {
-                val showPanel = maxWidth >= 880.dp
-                val panelWidth = (maxWidth * 0.36f).coerceIn(320.dp, 420.dp)
                 Row(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
                         state = listState,
@@ -167,8 +171,10 @@ fun DetailScreen(
                                 detail = detail,
                                 entry = entry,
                                 playFocus = playFocus,
-                                episodeFocus = if (showPanel) episodeFocus else null,
+                                episodeFocus = episodeFocus,
                                 onBack = onBack,
+                                episodeCount = selectedSource?.episodes?.size ?: 0,
+                                onOpenEpisodes = { episodesOpen = true },
                                 onPlayResume = {
                                     if (selectedEpisode != null) {
                                         val position = entry
@@ -209,22 +215,6 @@ fun DetailScreen(
                             }
                         }
 
-                        if (!showPanel && detail.sources.isNotEmpty()) {
-                            item(key = "episodes") {
-                                InlineEpisodes(
-                                    detail = detail,
-                                    sourceIndex = sourceIndex,
-                                    episodeIndex = episodeIndex,
-                                    onSelectSource = {
-                                        sourceIndex = it
-                                        episodeIndex = 0
-                                    },
-                                    onSelectEpisode = { onPlay(detail, sourceIndex, it, 0) },
-                                    selectedFocus = episodeFocus,
-                                )
-                            }
-                        }
-
                         if (detail.related.isNotEmpty()) {
                             item(key = "related") {
                                 Column {
@@ -250,28 +240,21 @@ fun DetailScreen(
                         }
                     }
 
-                    if (showPanel) {
-                        Box(
-                            Modifier
-                                .width(1.dp)
-                                .fillMaxHeight()
-                                .background(Divider),
-                        )
-                        EpisodePanel(
-                            detail = detail,
-                            sourceIndex = sourceIndex,
-                            episodeIndex = episodeIndex,
-                            onSelectSource = {
-                                sourceIndex = it
-                                episodeIndex = 0
-                            },
-                            onSelectEpisode = { onPlay(detail, sourceIndex, it, 0) },
-                            selectedFocus = episodeFocus,
-                            modifier = Modifier
-                                .width(panelWidth)
-                                .fillMaxHeight(),
-                        )
-                    }
+
+                }
+            }
+            if (episodesOpen) {
+                Dialog(onDismissRequest = { episodesOpen = false; runCatching { episodeFocus.requestFocus() } }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                    EpisodePanel(detail, sourceIndex, episodeIndex,
+                        onSelectSource = { sourceIndex = it; episodeIndex = 0 },
+                        onSelectEpisode = { index ->
+                            episodesOpen = false
+                            val href = detail.sources[sourceIndex].episodes[index].href
+                            onPlay(detail, sourceIndex, index, episodeRecords.firstOrNull { it.episodeHref == href }?.positionMs ?: 0L)
+                        },
+                        selectedFocus = remember { FocusRequester() },
+                        records = episodeRecords,
+                        modifier = Modifier.fillMaxWidth(0.8f).fillMaxHeight(0.8f))
                 }
             }
         }
@@ -285,6 +268,8 @@ private fun DetailHeader(
     playFocus: FocusRequester,
     episodeFocus: FocusRequester?,
     onBack: (() -> Unit)?,
+    episodeCount: Int,
+    onOpenEpisodes: () -> Unit,
     onPlayResume: () -> Unit,
     onPlayFirst: () -> Unit,
 ) {
@@ -431,6 +416,9 @@ private fun DetailHeader(
                                 },
                             )
                         }
+                        if (episodeCount > 0) {
+                            TvButton(text = "选集：共${episodeCount}集", onClick = onOpenEpisodes, focusRequester = episodeFocus)
+                        }
                     }
                 }
             }
@@ -491,6 +479,7 @@ private fun EpisodePanel(
     onSelectSource: (Int) -> Unit,
     onSelectEpisode: (Int) -> Unit,
     selectedFocus: FocusRequester,
+    records: List<EpisodeProgress> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val source = detail.sources.getOrNull(sourceIndex)
@@ -500,6 +489,8 @@ private fun EpisodePanel(
     LaunchedEffect(sourceIndex, episodeIndex) {
         if (episodes.isNotEmpty()) {
             runCatching { gridState.scrollToItem(episodeIndex.coerceIn(0, episodes.lastIndex)) }
+            delay(500)
+            runCatching { selectedFocus.requestFocus() }
         }
     }
 
@@ -550,14 +541,19 @@ private fun EpisodePanel(
                 key = { index -> "$index-${episodes[index].href}" },
             ) { index ->
                 val episode = episodes[index]
+                val record = records.firstOrNull { it.episodeHref == episode.href }
                 Chip(
                     text = episode.name,
                     selected = index == episodeIndex,
                     onClick = { onSelectEpisode(index) },
                     focusRequester = if (index == episodeIndex) selectedFocus else null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 42.dp),
+                    progress = record?.progress,
+                    completed = record != null && if (index == episodes.lastIndex) {
+                        record.progress > 0.85f
+                    } else {
+                        record.progress > 0.75f && (records.firstOrNull { it.episodeHref == episodes[index + 1].href }?.positionMs ?: 0L) > 0L
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp),
                 )
             }
         }

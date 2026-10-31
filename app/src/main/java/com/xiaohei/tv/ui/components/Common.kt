@@ -33,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -47,6 +48,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
@@ -64,6 +69,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -503,8 +509,11 @@ fun Chip(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     focusRequester: FocusRequester? = null,
+    progress: Float? = null,
+    completed: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
+    var chipWidth by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val bg by animateColorAsState(
         if (selected) Accent.copy(alpha = 0.9f) else if (focused) SurfaceHigh else Color(0xFF1B2029),
         label = "chipBg",
@@ -512,11 +521,15 @@ fun Chip(
     val shape = RoundedCornerShape(20.dp)
     Box(
         modifier = modifier
+            .onSizeChanged { chipWidth = it.width }
             .heightIn(min = 32.dp)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(bg)
+            .drawBehind {
+                progress?.let { drawRect(Gold.copy(alpha = 0.65f), size = Size(size.width * it.coerceIn(0f, 1f), size.height)) }
+            }
             .border(
                 if (focused) 2.dp else 1.dp,
                 if (focused) Gold else if (selected) Accent else Divider,
@@ -532,6 +545,27 @@ fun Chip(
             style = TextStyle(fontSize = 13.sp),
             maxLines = 1,
         )
+        if (progress != null && progress > 0f) {
+            Text(
+                text = text,
+                color = Color.Black,
+                style = TextStyle(fontSize = 13.sp),
+                maxLines = 1,
+                modifier = Modifier.drawWithContent {
+                    val boundary = chipWidth * progress.coerceIn(0f, 1f) - (chipWidth - size.width) / 2f
+                    clipRect(right = boundary.coerceIn(0f, size.width)) { this@drawWithContent.drawContent() }
+                },
+            )
+        }
+        if (completed) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = "已看",
+                tint = Color.White,
+                modifier = Modifier.align(Alignment.TopEnd).size(15.dp)
+                    .background(Color(0xFF30343A), CircleShape).padding(2.dp),
+            )
+        }
     }
 }
 

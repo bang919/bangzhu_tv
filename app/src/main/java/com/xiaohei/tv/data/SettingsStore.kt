@@ -21,6 +21,7 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 data class SkipTimes(
     val introMs: Long = 0,
     val outroMs: Long = 0,
+    val volumePercent: Int = 100,
 )
 
 data class AppSettings(

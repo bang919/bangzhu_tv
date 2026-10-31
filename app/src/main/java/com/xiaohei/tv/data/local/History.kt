@@ -33,6 +33,21 @@ data class HistoryEntry(
         get() = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
 }
 
+@Entity(tableName = "episode_progress", primaryKeys = ["providerId", "videoId", "episodeHref"])
+data class EpisodeProgress(
+    val providerId: String,
+    val videoId: String,
+    val episodeHref: String,
+    val positionMs: Long,
+    val durationMs: Long,
+    val watchedMs: Long,
+) {
+    val progress: Float get() = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    val completed: Boolean get() = durationMs > 0 &&
+        // watchedMs.toDouble() / durationMs > 0.5 &&
+        positionMs.toDouble() / durationMs > 0.9
+}
+
 @Dao
 interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY updatedAt DESC")
@@ -44,6 +59,15 @@ interface HistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: HistoryEntry)
 
+    @Query("SELECT * FROM episode_progress WHERE providerId = :providerId AND videoId = :videoId")
+    fun observeEpisodes(providerId: String, videoId: String): Flow<List<EpisodeProgress>>
+
+    @Query("SELECT * FROM episode_progress WHERE providerId = :providerId AND videoId = :videoId AND episodeHref = :href LIMIT 1")
+    suspend fun findEpisode(providerId: String, videoId: String, href: String): EpisodeProgress?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertEpisode(entry: EpisodeProgress)
+
     @Query("DELETE FROM history WHERE providerId = :providerId AND videoId = :videoId")
     suspend fun delete(providerId: String, videoId: String)
 
@@ -51,7 +75,7 @@ interface HistoryDao {
     suspend fun clear()
 }
 
-@Database(entities = [HistoryEntry::class], version = 3, exportSchema = false)
+@Database(entities = [HistoryEntry::class, EpisodeProgress::class], version = 4, exportSchema = false)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 
@@ -81,7 +105,7 @@ abstract class HistoryDatabase : RoomDatabase() {
                     HistoryDatabase::class.java,
                     "xiaohei.db",
                 )
-                    .addMigrations(migration1To2, migration2To3)
+                    .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }
             }

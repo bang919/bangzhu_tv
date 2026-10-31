@@ -85,6 +85,13 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.BaseAudioProcessor
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -99,7 +106,6 @@ import com.xiaohei.tv.ui.LoadState
 import com.xiaohei.tv.ui.components.Chip
 import com.xiaohei.tv.ui.components.ScreenPad
 import com.xiaohei.tv.ui.components.TvButton
-import com.xiaohei.tv.ui.components.TvConfirmDialog
 import com.xiaohei.tv.ui.components.TvIconButton
 import com.xiaohei.tv.ui.components.formatDuration
 import com.xiaohei.tv.ui.friendlyMessage
@@ -139,7 +145,7 @@ fun PlayerScreen(
     var streamState by remember { mutableStateOf<LoadState<StreamInfo>>(LoadState.Loading) }
     var panel by remember { mutableStateOf(PlayerPanel.None) }
     var controlsVisible by remember { mutableStateOf(true) }
-    var confirmExit by remember { mutableStateOf(false) }
+    var lastBackAt by remember { mutableLongStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
@@ -168,6 +174,7 @@ fun PlayerScreen(
         }
     }
 
+    val gainProcessor = remember { GainAudioProcessor() }
     val exo = remember {
         val client = TlsCompat.configure(OkHttpClient.Builder()).build()
         val playerReferer = viewModel.refererFor(initialDetail.providerId)
@@ -184,10 +191,23 @@ fun PlayerScreen(
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
-        ExoPlayer.Builder(context, mediaSourceFactory)
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+                DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf(gainProcessor))
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .build()
+        }
+        ExoPlayer.Builder(context, renderers)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(trackSelector)
             .build()
             .apply { playWhenReady = true }
+    }
+
+    LaunchedEffect(skipTimes.volumePercent) {
+        gainProcessor.percent = skipTimes.volumePercent.coerceIn(0, 300)
     }
 
     val videoChoices = remember(tracks) { videoChoicesOf(tracks) }
@@ -199,46 +219,53 @@ fun PlayerScreen(
     val currentEpisode = currentSource?.episodes?.getOrNull(episodeIndex)
     val hasNext = currentSource?.episodes?.let { episodeIndex + 1 < it.size } == true
 
-    val latestSave = rememberUpdatedState(
-        SaveSnapshot(detail, sourceIndex, episodeIndex, position, duration)
-    )
-
-    DisposableEffect(exo) {
+    DisposableEffect(exo, detail, sourceIndex, episodeIndex) {
+        var playingSince: Long? = null
+        var accumulated = 0L
+        var activated = false
+        fun settle() {
+            val now = android.os.SystemClock.elapsedRealtime()
+            playingSince?.let { accumulated += (now - it).coerceAtLeast(0) }
+            playingSince = if (exo.isPlaying) now else null
+        }
+        fun save() {
+            settle()
+            viewModel.saveProgress(detail, sourceIndex, episodeIndex, exo.currentPosition.coerceAtLeast(0), exo.duration.coerceAtLeast(0), accumulated)
+            accumulated = 0L
+        }
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 playbackState = state
                 if (state == Player.STATE_READY) {
+                    activated = true
                     duration = exo.duration.coerceAtLeast(0)
                 }
             }
-
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                if (!activated) return
+                if (playing) playingSince = android.os.SystemClock.elapsedRealtime() else save()
             }
-
-            override fun onTracksChanged(playerTracks: Tracks) {
-                tracks = playerTracks
-            }
-
+            override fun onTracksChanged(playerTracks: Tracks) { tracks = playerTracks }
             override fun onPlayerError(playerError: PlaybackException) {
                 error = "播放失败：${playerError.errorCodeName}"
                 controlsVisible = true
             }
         }
-        exo.addListener(listener)
-        onDispose {
-            hongguoVideo?.close()
-            val snapshot = latestSave.value
-            viewModel.saveProgress(
-                snapshot.detail,
-                snapshot.sourceIndex,
-                snapshot.episodeIndex,
-                snapshot.position,
-                snapshot.duration,
-            )
-            exo.removeListener(listener)
-            exo.release()
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val periodic = object : Runnable {
+            override fun run() { if (activated && exo.isPlaying) save(); handler.postDelayed(this, 30_000) }
         }
+        exo.addListener(listener)
+        handler.postDelayed(periodic, 30_000)
+        onDispose {
+            handler.removeCallbacks(periodic)
+            if (activated) save()
+            exo.removeListener(listener)
+        }
+    }
+    DisposableEffect(exo) {
+        onDispose { hongguoVideo?.close(); exo.release() }
     }
 
     LaunchedEffect(detail.id, detail.providerId) {
@@ -316,15 +343,6 @@ fun PlayerScreen(
                 }
             }
             delay(1000)
-        }
-    }
-
-    LaunchedEffect(detail.id, sourceIndex, episodeIndex) {
-        while (true) {
-            delay(5000)
-            if (position > 0) {
-                viewModel.saveProgress(detail, sourceIndex, episodeIndex, position, duration)
-            }
         }
     }
 
@@ -425,14 +443,15 @@ fun PlayerScreen(
         trackSelector.setParameters(params.build())
     }
 
-    BackHandler(enabled = confirmExit) { confirmExit = false }
-    BackHandler(enabled = !confirmExit && panel != PlayerPanel.None) { closePanel() }
-    BackHandler(enabled = !confirmExit && panel == PlayerPanel.None) {
-        if (controlsVisible) {
-            controlsVisible = false
-            runCatching { rootFocus.requestFocus() }
+    BackHandler(enabled = panel != PlayerPanel.None) { closePanel() }
+    BackHandler(enabled = panel == PlayerPanel.None) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (lastBackAt != 0L && now - lastBackAt <= 5_000) {
+            lastBackAt = 0L
+            onClose()
         } else {
-            confirmExit = true
+            lastBackAt = now
+            android.widget.Toast.makeText(context, "5秒内再次按返回键退出播放", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -776,6 +795,17 @@ fun PlayerScreen(
                             )
                         },
                     )
+                    TvButton(
+                        text = "声音 ${skipTimes.volumePercent}%",
+                        onClick = {},
+                        modifier = Modifier.onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) false else when (event.key) {
+                                Key.DirectionUp -> { updateSkipTimes(skipTimes.copy(volumePercent = (skipTimes.volumePercent + 10).coerceAtMost(300))); true }
+                                Key.DirectionDown -> { updateSkipTimes(skipTimes.copy(volumePercent = (skipTimes.volumePercent - 10).coerceAtLeast(0))); true }
+                                else -> false
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -844,20 +874,7 @@ fun PlayerScreen(
             }
         }
 
-        if (confirmExit) {
-            TvConfirmDialog(
-                title = "退出播放",
-                message = "确定要退出播放吗？",
-                confirmText = "退出播放",
-                dismissText = "继续观看",
-                focusCancelFirst = true,
-                onConfirm = {
-                    confirmExit = false
-                    onClose()
-                },
-                onDismiss = { confirmExit = false },
-            )
-        }
+
     }
 }
 
@@ -1362,5 +1379,27 @@ private fun PlayerSidePanel(
                 modifier = Modifier.padding(top = 10.dp),
             )
         }
+    }
+}
+
+private class GainAudioProcessor : BaseAudioProcessor() {
+    @Volatile var percent: Int = 100
+
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
+            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+        }
+        return inputAudioFormat
+    }
+
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val output = replaceOutputBuffer(inputBuffer.remaining()).order(ByteOrder.nativeOrder())
+        inputBuffer.order(ByteOrder.nativeOrder())
+        val gain = percent
+        while (inputBuffer.remaining() >= 2) {
+            val sample = inputBuffer.short.toInt()
+            output.putShort((sample * gain / 100).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort())
+        }
+        output.flip()
     }
 }

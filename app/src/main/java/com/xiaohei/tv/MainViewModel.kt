@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.xiaohei.tv.data.AppSettings
 import com.xiaohei.tv.data.SkipTimes
 import com.xiaohei.tv.data.local.HistoryEntry
+import com.xiaohei.tv.data.local.EpisodeProgress
 import com.xiaohei.tv.data.model.CategoryPage
 import com.xiaohei.tv.data.model.CategorySort
 import com.xiaohei.tv.data.model.HomeData
@@ -82,16 +83,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun resolveStream(episodeHref: String, providerId: String? = null): StreamInfo =
         repository.resolveStream(episodeHref, providerId ?: activeProviderId)
 
+    fun episodeProgress(providerId: String, videoId: String) = container.historyDao.observeEpisodes(providerId, videoId)
+
+    private val progressMutex = kotlinx.coroutines.sync.Mutex()
+
     fun saveProgress(
         detail: VideoDetail,
         sourceIndex: Int,
         episodeIndex: Int,
         positionMs: Long,
         durationMs: Long,
+        watchedDeltaMs: Long = 0,
     ) {
         val episode = detail.sources.getOrNull(sourceIndex)?.episodes?.getOrNull(episodeIndex) ?: return
-        if (positionMs <= 0) return
         viewModelScope.launch {
+            progressMutex.lock()
+            try {
+            val previous = container.historyDao.findEpisode(detail.providerId, detail.id, episode.href)
+            container.historyDao.upsertEpisode(EpisodeProgress(detail.providerId, detail.id, episode.href, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), (previous?.watchedMs ?: 0L) + watchedDeltaMs.coerceAtLeast(0)))
             container.historyDao.upsert(
                 HistoryEntry(
                     videoId = detail.id,
@@ -109,6 +118,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     providerId = detail.providerId,
                 )
             )
+            } finally { progressMutex.unlock() }
         }
     }
 
