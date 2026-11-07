@@ -39,6 +39,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
@@ -216,13 +217,13 @@ fun SearchScreen(
                 onClick = onClose,
             )
             Spacer(Modifier.width(16.dp))
-            Text(
+            if (LocalConfiguration.current.screenWidthDp >= 600) Text(
                 text = "搜索",
                 color = TextMain,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Spacer(Modifier.width(24.dp))
+            Spacer(Modifier.width(if (LocalConfiguration.current.screenWidthDp < 600) 0.dp else 24.dp))
             TvTextField(
                 value = ui.query,
                 onValueChange = { ui.query = it },
@@ -236,7 +237,7 @@ fun SearchScreen(
             Spacer(Modifier.width(14.dp))
             TvButton(
                 text = "搜索",
-                icon = Icons.Filled.Search,
+                icon = if (LocalConfiguration.current.screenWidthDp < 600) null else Icons.Filled.Search,
                 onClick = { ui.submit(ui.query) },
                 primary = true,
             )

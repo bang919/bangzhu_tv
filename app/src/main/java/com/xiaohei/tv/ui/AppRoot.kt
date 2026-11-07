@@ -1,6 +1,10 @@
 package com.xiaohei.tv.ui
 
 import android.view.KeyEvent as AndroidKeyEvent
+import android.app.UiModeManager
+import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -90,6 +94,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     }
 
     val activity = LocalContext.current as? MainActivity
+    val isTv = (LocalContext.current.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
     val gestureEnabled = rememberUpdatedState(
         tab == MainTab.HOME && overlays.isEmpty() && !vpnUnlocked
     )
@@ -216,6 +221,11 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
         secretProgress[0] = 0
     }
 
+    DisposableEffect(playerOverlay != null, isTv) {
+        if (!isTv) activity?.requestedOrientation = if (playerOverlay != null) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose { }
+    }
+
     if (playerOverlay != null) {
         PlayerScreen(
             viewModel = viewModel,
@@ -252,7 +262,12 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                     .fillMaxSize()
                     .background(BgDark),
             ) {
-                TopNav(
+                if (!isTv) MobileNav(
+                    current = tab, tabs = visibleTabs, onSelect = { overlays = emptyList(); tab = it },
+                    onOpenSearch = { searchState.reset(); overlays = listOf(Overlay.Search) },
+                    onOpenHistory = { overlays = emptyList(); tab = MainTab.HISTORY },
+                    onOpenSettings = { overlays = emptyList(); tab = MainTab.SETTINGS },
+                ) else TopNav(
                     current = tab,
                     tabs = visibleTabs,
                     clashPhase = clashStatus.phase,

@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -261,6 +262,7 @@ fun DetailScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DetailHeader(
     detail: VideoDetail,
@@ -273,6 +275,7 @@ private fun DetailHeader(
     onPlayResume: () -> Unit,
     onPlayFirst: () -> Unit,
 ) {
+    val mobile = LocalConfiguration.current.screenWidthDp < 600
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -324,7 +327,7 @@ private fun DetailHeader(
             Row(verticalAlignment = Alignment.Top) {
                 Box(
                     modifier = Modifier
-                        .width(172.dp)
+                        .width(if (mobile) 100.dp else 172.dp)
                         .aspectRatio(2f / 3f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF1B2029)),
@@ -336,19 +339,19 @@ private fun DetailHeader(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-                Spacer(Modifier.width(26.dp))
+                Spacer(Modifier.width(if (mobile) 14.dp else 26.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = detail.title,
                         color = TextMain,
-                        fontSize = 32.sp,
+                        fontSize = if (mobile) 22.sp else 32.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        lineHeight = 39.sp,
+                        lineHeight = if (mobile) 28.sp else 39.sp,
                     )
                     Spacer(Modifier.height(9.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf(detail.typeName, detail.area, detail.year, detail.language)
                             .filter { it.isNotBlank() }
                             .forEach { MetaTag(it) }
@@ -388,7 +391,7 @@ private fun DetailHeader(
                         )
                     }
                     Spacer(Modifier.height(18.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         TvButton(
                             text = if (entry != null) {
                                 "继续观看 ${entry.episodeName.ifBlank { "正片" }} · ${formatDuration(entry.positionMs)}"

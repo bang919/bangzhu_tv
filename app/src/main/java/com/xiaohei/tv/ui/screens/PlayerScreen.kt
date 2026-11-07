@@ -1,5 +1,8 @@
 package com.xiaohei.tv.ui.screens
 
+import android.app.UiModeManager
+import android.content.Context
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -7,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,6 +43,9 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -63,6 +71,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -121,7 +130,7 @@ import okhttp3.OkHttpClient
 
 private enum class PlayerPanel { None, Episodes, Sources, Versions, Tracks }
 
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun PlayerScreen(
     viewModel: MainViewModel,
@@ -132,6 +141,8 @@ fun PlayerScreen(
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
+    val isTv = (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    var volumeDialogOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     var detail by remember { mutableStateOf(initialDetail) }
@@ -151,6 +162,7 @@ fun PlayerScreen(
     var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
     var position by remember { mutableLongStateOf(initialPosition) }
     var duration by remember { mutableLongStateOf(0) }
+    var seekPreview by remember { mutableStateOf<Long?>(null) }
     var reloadKey by remember { mutableIntStateOf(0) }
     var interactionTick by remember { mutableIntStateOf(0) }
     var hasStarted by remember { mutableStateOf(false) }
@@ -357,8 +369,8 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, panel, isPlaying, interactionTick, error) {
-        if (controlsVisible && panel == PlayerPanel.None && isPlaying && error == null) {
+    LaunchedEffect(controlsVisible, panel, isPlaying, interactionTick, error, volumeDialogOpen, seekPreview != null) {
+        if (controlsVisible && panel == PlayerPanel.None && isPlaying && error == null && !volumeDialogOpen && seekPreview == null) {
             delay(7000)
             controlsVisible = false
             runCatching { rootFocus.requestFocus() }
@@ -508,6 +520,9 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        // A tap on the video reveals the same controls available to a TV remote.
+        Box(Modifier.fillMaxSize().clickable { showControls() })
+
         if (streamState is LoadState.Loading || (isPlaying.not() && playbackState == Player.STATE_BUFFERING)) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -598,8 +613,21 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(formatDuration(position), color = TextMain, fontSize = 14.sp)
-                    Box(
+                    Text(formatDuration(seekPreview ?: position), color = TextMain, fontSize = 14.sp)
+                    if (!isTv) {
+                        MobileSeekBar(
+                            progress = if (duration > 0) ((seekPreview ?: position).toFloat() / duration).coerceIn(0f, 1f) else 0f,
+                            enabled = duration > 0,
+                            onPreview = { fraction -> seekPreview = (duration * fraction).toLong().coerceIn(0L, duration) },
+                            onFinish = {
+                                seekPreview?.let { target -> exo.seekTo(target); position = target }
+                                seekPreview = null
+                                showControls()
+                            },
+                            onCancel = { seekPreview = null; showControls() },
+                            modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
+                        )
+                    } else Box(
                         modifier = Modifier
                             .weight(1f)
                             .padding(horizontal = 14.dp)
@@ -673,11 +701,7 @@ fun PlayerScreen(
                     Text(formatDuration(duration), color = TextDim, fontSize = 14.sp)
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                AdaptivePlayerControls(isTv = isTv) {
                     PlayerIconButton(
                         icon = Icons.Filled.Replay10,
                         contentDescription = "快退 10 秒",
@@ -797,7 +821,7 @@ fun PlayerScreen(
                     )
                     TvButton(
                         text = "声音 ${skipTimes.volumePercent}%",
-                        onClick = {},
+                        onClick = { if (!isTv) { volumeDialogOpen = true; showControls() } },
                         modifier = Modifier.onPreviewKeyEvent { event ->
                             if (event.type != KeyEventType.KeyDown) false else when (event.key) {
                                 Key.DirectionUp -> { updateSkipTimes(skipTimes.copy(volumePercent = (skipTimes.volumePercent + 10).coerceAtMost(300))); true }
@@ -808,6 +832,21 @@ fun PlayerScreen(
                     )
                 }
             }
+        }
+
+        if (volumeDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { volumeDialogOpen = false; showControls() },
+                title = { Text("声音 ${skipTimes.volumePercent}%") },
+                text = {
+                    Slider(
+                        value = skipTimes.volumePercent.toFloat(),
+                        onValueChange = { updateSkipTimes(skipTimes.copy(volumePercent = it.toInt())) },
+                        valueRange = 0f..300f,
+                    )
+                },
+                confirmButton = { TextButton(onClick = { volumeDialogOpen = false; showControls() }) { Text("完成") } },
+            )
         }
 
         if (panel != PlayerPanel.None) {
@@ -875,6 +914,70 @@ fun PlayerScreen(
         }
 
 
+    }
+}
+
+@Composable
+private fun MobileSeekBar(
+    progress: Float,
+    enabled: Boolean,
+    onPreview: (Float) -> Unit,
+    onFinish: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val currentPreview by rememberUpdatedState(onPreview)
+    val currentFinish by rememberUpdatedState(onFinish)
+    val currentCancel by rememberUpdatedState(onCancel)
+    BoxWithConstraints(
+        modifier = modifier.height(48.dp).pointerInput(enabled) {
+            if (!enabled) return@pointerInput
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val inset = 7.dp.toPx()
+                val trackWidth = (size.width - 2 * inset).coerceAtLeast(1f)
+                fun preview(x: Float) = currentPreview(((x - inset) / trackWidth).coerceIn(0f, 1f))
+                var finished = false
+                try {
+                    preview(down.position.x)
+                    down.consume()
+                    do {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        preview(change.position.x)
+                        change.consume()
+                        if (!change.pressed) {
+                            finished = true
+                            currentFinish()
+                        }
+                    } while (!finished)
+                } finally {
+                    if (!finished) currentCancel()
+                }
+            }
+        },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 7.dp).height(4.dp).clip(CircleShape).background(Color(0x55FFFFFF)))
+        Box(Modifier.fillMaxWidth().padding(horizontal = 7.dp).height(4.dp)) {
+            Box(Modifier.fillMaxWidth(progress).fillMaxHeight().clip(CircleShape).background(Accent))
+        }
+        Box(Modifier.offset(x = (maxWidth - 14.dp) * progress).size(14.dp).clip(CircleShape).background(if (enabled) Accent else TextDim))
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AdaptivePlayerControls(isTv: Boolean, content: @Composable () -> Unit) {
+    if (isTv) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) { content() }
+    } else {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) { content() }
     }
 }
 

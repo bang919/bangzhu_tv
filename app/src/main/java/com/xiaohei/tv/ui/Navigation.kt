@@ -3,6 +3,9 @@ package com.xiaohei.tv.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -231,5 +234,23 @@ private fun NavItem(
             ),
             maxLines = 1,
         )
+    }
+}
+
+@Composable
+fun MobileNav(current: MainTab, tabs: List<MainTab>, onSelect: (MainTab) -> Unit, onOpenSearch: () -> Unit, onOpenHistory: () -> Unit, onOpenSettings: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(BgDark)) {
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("帮主", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            Text("TV", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.weight(1f))
+            TvIconButton(icon = Icons.Filled.Search, contentDescription = "搜索", onClick = onOpenSearch)
+            TvIconButton(icon = Icons.Filled.History, contentDescription = "观看历史", onClick = onOpenHistory, selected = current == MainTab.HISTORY)
+            TvIconButton(icon = Icons.Filled.Settings, contentDescription = "设置", onClick = onOpenSettings, selected = current == MainTab.SETTINGS)
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            tabs.forEach { tab -> NavItem(tab.label, tab == current, { onSelect(tab) }) }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Divider))
     }
 }
