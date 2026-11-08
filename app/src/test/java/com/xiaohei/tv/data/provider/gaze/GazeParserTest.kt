@@ -27,4 +27,11 @@ class GazeParserTest {
         assertEquals("简介", detail.description)
         assertEquals(2, detail.sources.single().episodes.size)
     }
+    @Test fun `detail handles generated source identifiers and episode classes`() {
+        val html = """<h5 itemprop="name">测试影片</h5><div role="tablist" aria-label="播放线路"><button role="tab" id="gabc-g1" data-source-group="1">默认</button><button role="tab" id="gabc-g5" data-source-group="5">备用</button></div><div role="tabpanel" id="gdef-g1" data-source-group="1"><button class="random" data-path="0">第1集</button><button class="random" data-path="1">第2集</button></div><div role="tabpanel" id="gdef-g5" data-source-group="5"><button class="other" data-path="0">正片</button></div>"""
+        val detail = parser.parseDetail(html, "0123456789abcdef")
+        assertEquals(listOf("默认", "备用"), detail.sources.map { it.name })
+        assertEquals(listOf(2, 1), detail.sources.map { it.episodes.size })
+        assertEquals("gaze:0123456789abcdef:5:0", detail.sources[1].episodes[0].href)
+    }
 }

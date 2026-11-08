@@ -82,9 +82,7 @@ fun SettingsScreen(viewModel: MainViewModel, vpnVisible: Boolean) {
     var message by remember { mutableStateOf<String?>(null) }
     val saveSubscriptionFocus = remember { FocusRequester() }
     val vpnToggleFocus = remember { FocusRequester() }
-    val providerFocus = remember { FocusRequester() }
-
-    AutoFocus(providerFocus)
+    AutoFocus(vpnToggleFocus)
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -133,59 +131,8 @@ fun SettingsScreen(viewModel: MainViewModel, vpnVisible: Boolean) {
         item(key = "header") {
             ScreenHeader(
                 title = "设置",
-                subtitle = if (vpnVisible) {
-                    "视频源与 Clash VPN；VPN 默认关闭，可按需开启"
-                } else {
-                    "切换视频源，选择想看的内容"
-                },
+                subtitle = "Clash VPN；VPN 默认关闭，可按需开启",
             )
-        }
-
-        item(key = "provider") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceDark)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                val activeProviderId = settings.providerId.ifBlank { viewModel.defaultProviderId }
-                val active = viewModel.providerInfos.firstOrNull { it.id == activeProviderId }
-                SectionTitle(
-                    title = "视频源",
-                    trailing = active?.name ?: viewModel.defaultProviderId,
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    viewModel.providerInfos.forEach { info ->
-                        Chip(
-                            text = info.name,
-                            selected = info.id == activeProviderId,
-                            onClick = {
-                                if (info.id != activeProviderId) {
-                                    viewModel.setProvider(info.id)
-                                    message = "已切换视频源：${info.name}"
-                                }
-                            },
-                            focusRequester = if (info.id == activeProviderId) providerFocus else null,
-                        )
-                    }
-                }
-                Text(
-                    text = "切换后首页、分类、搜索、详情与播放都使用所选站点；观看历史按来源区分。",
-                    color = TextDim,
-                    fontSize = 12.sp,
-                )
-                active?.baseUrl?.takeIf { it.isNotBlank() }?.let {
-                    Text(text = "站点地址：$it", color = TextDim, fontSize = 12.sp)
-                }
-                message?.let {
-                    Text(it, color = TextDim, fontSize = 12.sp)
-                }
-            }
         }
 
         if (vpnVisible) {

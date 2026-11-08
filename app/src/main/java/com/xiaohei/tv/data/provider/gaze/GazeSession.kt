@@ -195,7 +195,7 @@ class GazeSession(private val context: Context) {
             val initialCaptured = awaitPlaylist(view, 12_000)
             if (initialCaptured) delay(1500) // The page may restore its last episode after the player starts.
 
-            val tabSelector = "#play-source-tab-g$group"
+            val tabSelector = "[role=tab][data-source-group=\"$group\"], #play-source-tab-g$group"
             val tabActive = evaluate(
                 view,
                 "!!(document.querySelector('$tabSelector') && document.querySelector('$tabSelector').classList.contains('active'))",
@@ -209,7 +209,7 @@ class GazeSession(private val context: Context) {
                 delay(500)
             }
 
-            val buttons = "#play-source-panel-g$group .playbtn"
+            val buttons = "[role=tabpanel][data-source-group=\"$group\"] button[data-path], #play-source-panel-g$group .playbtn"
             awaitReady(
                 view,
                 "document.querySelectorAll('$buttons').length > $episodeIndex",
@@ -253,6 +253,7 @@ class GazeSession(private val context: Context) {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
             val state = pollState(view, "!!(window.__gazePlaylist && window.__gazePlaylist.indexOf('#EXTM3U')>=0${if (changed) " && window.__gazePlaylistGeneration > window.__gazeMinGeneration" else ""})")
+            if (state?.optBoolean("blocked") == true) throw IOException("注视影视限制了原生播放器，请稍后重试")
             if (state?.optBoolean("ok") == true) return true
             delay(300)
         }
@@ -268,6 +269,7 @@ class GazeSession(private val context: Context) {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
             val state = pollState(view, readyJs)
+            if (state?.optBoolean("blocked") == true) throw IOException("注视影视限制了原生播放器，请稍后重试")
             if (state?.optBoolean("ok") == true) return
             delay(300)
         }
@@ -401,6 +403,7 @@ class GazeSession(private val context: Context) {
     if (b.width > 0 && b.height > 0) r.cap = { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   }
   r.title = document.title || '';
+  r.blocked = window.gazeRuntimeBlocked === true;
   r.url = location.href;
   r.ok = !!($readyJs);
   return JSON.stringify(r);

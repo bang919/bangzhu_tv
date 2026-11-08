@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Text
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,10 +41,13 @@ import androidx.compose.ui.unit.sp
 import com.xiaohei.tv.clash.ClashPhase
 import com.xiaohei.tv.data.model.VideoDetail
 import com.xiaohei.tv.data.model.VideoType
+import com.xiaohei.tv.data.model.ProviderInfo
+import com.xiaohei.tv.ui.components.Chip
 import com.xiaohei.tv.ui.components.ScreenPad
 import com.xiaohei.tv.ui.components.TvIconButton
 import com.xiaohei.tv.ui.theme.Accent
 import com.xiaohei.tv.ui.theme.BgDark
+import com.xiaohei.tv.ui.theme.SurfaceDark
 import com.xiaohei.tv.ui.theme.Divider
 import com.xiaohei.tv.ui.theme.Gold
 import com.xiaohei.tv.ui.theme.Success
@@ -105,6 +110,9 @@ fun TopNav(
     clashPhase: ClashPhase,
     vpnEnabled: Boolean,
     vpnVisible: Boolean,
+    providers: List<ProviderInfo>,
+    activeProviderId: String,
+    onSelectProvider: (String) -> Unit,
     onSelect: (MainTab) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -135,7 +143,7 @@ fun TopNav(
         }
         Spacer(Modifier.width(20.dp))
         Row(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -153,9 +161,11 @@ fun TopNav(
             }
         }
         Row(
+            modifier = Modifier.width(if (vpnVisible) 260.dp else 208.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ProviderMenu(providers, activeProviderId, onSelectProvider)
             TvIconButton(
                 icon = Icons.Filled.Search,
                 contentDescription = "搜索",
@@ -168,7 +178,7 @@ fun TopNav(
                 onClick = onOpenHistory,
                 selected = current == MainTab.HISTORY,
             )
-            TvIconButton(
+            if (vpnVisible) TvIconButton(
                 icon = Icons.Filled.Settings,
                 contentDescription = "设置",
                 onClick = onOpenSettings,
@@ -238,19 +248,38 @@ private fun NavItem(
 }
 
 @Composable
-fun MobileNav(current: MainTab, tabs: List<MainTab>, onSelect: (MainTab) -> Unit, onOpenSearch: () -> Unit, onOpenHistory: () -> Unit, onOpenSettings: () -> Unit) {
+fun MobileNav(current: MainTab, tabs: List<MainTab>, onSelect: (MainTab) -> Unit, onOpenSearch: () -> Unit, onOpenHistory: () -> Unit, onOpenSettings: () -> Unit, settingsVisible: Boolean, onLogoClick: () -> Unit, providers: List<ProviderInfo>, activeProviderId: String, onSelectProvider: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().background(BgDark)) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("帮主", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-            Text("TV", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            Row(Modifier.clickable(onClick = onLogoClick)) {
+                Text("帮主", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                Text("TV", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            }
             Spacer(Modifier.weight(1f))
+            ProviderMenu(providers, activeProviderId, onSelectProvider)
             TvIconButton(icon = Icons.Filled.Search, contentDescription = "搜索", onClick = onOpenSearch)
             TvIconButton(icon = Icons.Filled.History, contentDescription = "观看历史", onClick = onOpenHistory, selected = current == MainTab.HISTORY)
-            TvIconButton(icon = Icons.Filled.Settings, contentDescription = "设置", onClick = onOpenSettings, selected = current == MainTab.SETTINGS)
+            if (settingsVisible) TvIconButton(icon = Icons.Filled.Settings, contentDescription = "设置", onClick = onOpenSettings, selected = current == MainTab.SETTINGS)
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             tabs.forEach { tab -> NavItem(tab.label, tab == current, { onSelect(tab) }) }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Divider))
+    }
+}
+
+@Composable
+private fun ProviderMenu(providers: List<ProviderInfo>, activeProviderId: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Chip(text = (providers.firstOrNull { it.id == activeProviderId }?.name ?: "视频源") + " ▾", onClick = { expanded = true })
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.background(SurfaceDark)) {
+            providers.forEach { info ->
+                DropdownMenuItem(
+                    text = { Text(info.name + if (info.id == activeProviderId) " ✓" else "", color = TextMain) },
+                    onClick = { expanded = false; onSelect(info.id) },
+                )
+            }
+        }
     }
 }

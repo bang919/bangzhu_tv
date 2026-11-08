@@ -5,11 +5,19 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.os.Build
+import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,11 +50,14 @@ import com.xiaohei.tv.data.local.HistoryEntry
 import com.xiaohei.tv.data.model.VideoCard
 import com.xiaohei.tv.data.model.VideoDetail
 import com.xiaohei.tv.ui.components.InputTicker
+import com.xiaohei.tv.ui.components.Chip
+import com.xiaohei.tv.ui.components.ScreenPad
 import com.xiaohei.tv.ui.components.TvConfirmDialog
 import com.xiaohei.tv.ui.screens.CategoryScreen
 import com.xiaohei.tv.ui.screens.DetailScreen
 import com.xiaohei.tv.ui.screens.HistoryScreen
 import com.xiaohei.tv.ui.screens.HomeScreen
+import com.xiaohei.tv.ui.screens.GazeWebScreen
 import com.xiaohei.tv.ui.screens.PlayerScreen
 import com.xiaohei.tv.ui.screens.RankingScreen
 import com.xiaohei.tv.ui.screens.SearchScreen
@@ -76,14 +87,19 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     var vpnUnlocked by remember { mutableStateOf(false) }
     var confirmExitApp by remember { mutableStateOf(false) }
     val secretProgress = remember { intArrayOf(0) }
+    var logoTaps by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
     var busyLabel by remember { mutableStateOf<String?>(null) }
     val searchState = remember { SearchUiState() }
-    val history by viewModel.history.collectAsStateWithLifecycle()
+    val allHistory by viewModel.history.collectAsStateWithLifecycle()
+    val history = allHistory.filter { it.providerId != "gaze" }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val clashStatus by viewModel.clashStatus.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val activeProviderId = settings.providerId.ifBlank { viewModel.defaultProviderId }
+    LaunchedEffect(activeProviderId) {
+        if (activeProviderId == "gaze") viewModel.setProvider(viewModel.defaultProviderId)
+    }
     val visibleTabs = if (activeProviderId == "hongguo") {
         listOf(MainTab.HOME, MainTab.SHORT_RANK, MainTab.SHORT_RECOMMEND, MainTab.SHORT_FEED, MainTab.SHORT_DISCOVERY, MainTab.REAL_DRAMA, MainTab.COMIC_DRAMA, MainTab.AI_DRAMA)
     } else if (activeProviderId == "gaze") {
@@ -94,7 +110,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     }
 
     val activity = LocalContext.current as? MainActivity
-    val isTv = (LocalContext.current.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    val isTv = activity?.isTvDevice == true
     val gestureEnabled = rememberUpdatedState(
         tab == MainTab.HOME && overlays.isEmpty() && !vpnUnlocked
     )
@@ -169,6 +185,10 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     }
 
     fun playFromHistory(entry: HistoryEntry) {
+        if (!isTv && entry.providerId == "gaze") {
+            overlays = overlays + Overlay.Detail(entry.videoId, entry.providerId)
+            return
+        }
         scope.launch {
             busyLabel = "正在打开「${entry.title}」…"
             try {
@@ -182,6 +202,10 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     }
 
     fun playCard(card: VideoCard) {
+        if (!isTv && card.providerId == "gaze") {
+            openDetail(card)
+            return
+        }
         scope.launch {
             busyLabel = "正在打开「${card.title}」…"
             try {
@@ -219,10 +243,28 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
 
     LaunchedEffect(tab, overlays.isNotEmpty()) {
         secretProgress[0] = 0
+        logoTaps = 0
     }
 
-    DisposableEffect(playerOverlay != null, isTv) {
-        if (!isTv) activity?.requestedOrientation = if (playerOverlay != null) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    var mobileLandscape by remember(playerOverlay?.detail?.id, playerOverlay?.detail?.providerId) {
+        mutableStateOf(playerOverlay?.detail?.providerId != "hongguo")
+    }
+    DisposableEffect(playerOverlay != null, isTv, activity, mobileLandscape) {
+        if (!isTv && activity != null) {
+            val playing = playerOverlay != null
+            activity.requestedOrientation = if (playing && mobileLandscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            val window = activity.window
+            WindowCompat.setDecorFitsSystemWindows(window, !playing)
+            WindowInsetsControllerCompat(window, window.decorView).apply {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (playing) hide(WindowInsetsCompat.Type.systemBars()) else show(WindowInsetsCompat.Type.systemBars())
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode = if (playing) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
+            }
+        }
         onDispose { }
     }
 
@@ -234,6 +276,8 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
             initialEpisodeIndex = playerOverlay.episodeIndex,
             initialPosition = playerOverlay.startPosition,
             onClose = { overlays = overlays.dropLast(1) },
+            onToggleOrientation = if (!isTv && playerOverlay.detail.providerId == "hongguo") ({ mobileLandscape = !mobileLandscape }) else null,
+            isLandscape = mobileLandscape,
         )
         if (message != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -267,12 +311,25 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                     onOpenSearch = { searchState.reset(); overlays = listOf(Overlay.Search) },
                     onOpenHistory = { overlays = emptyList(); tab = MainTab.HISTORY },
                     onOpenSettings = { overlays = emptyList(); tab = MainTab.SETTINGS },
+                    settingsVisible = vpnUnlocked,
+                    providers = viewModel.providerInfos.filter { it.id != "gaze" },
+                    activeProviderId = activeProviderId,
+                    onSelectProvider = { if (it != activeProviderId) { viewModel.setProvider(it); tab = MainTab.HOME } },
+                    onLogoClick = {
+                        if (tab == MainTab.HOME && overlays.isEmpty() && !vpnUnlocked) {
+                            logoTaps++
+                            if (logoTaps >= 10) { vpnUnlocked = true; logoTaps = 0 }
+                        }
+                    },
                 ) else TopNav(
                     current = tab,
                     tabs = visibleTabs,
                     clashPhase = clashStatus.phase,
                     vpnEnabled = settings.vpnEnabled,
                     vpnVisible = vpnUnlocked,
+                    providers = viewModel.providerInfos.filter { it.id != "gaze" },
+                    activeProviderId = activeProviderId,
+                    onSelectProvider = { if (it != activeProviderId) { viewModel.setProvider(it); tab = MainTab.HOME } },
                     onSelect = { selected ->
                         overlays = emptyList()
                         tab = selected
@@ -293,13 +350,13 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                 Box(modifier = Modifier.weight(1f)) {
                     when (tab) {
                         MainTab.HOME -> HomeScreen(
-                            viewModel = viewModel,
-                            history = history,
-                            onOpenDetail = { openDetail(it) },
-                            onPlayCard = { playCard(it) },
-                            onResume = { playFromHistory(it) },
-                            onOpenTab = { tab = it },
-                        )
+                                viewModel = viewModel,
+                                history = history,
+                                onOpenDetail = { openDetail(it) },
+                                onPlayCard = { playCard(it) },
+                                onResume = { playFromHistory(it) },
+                                onOpenTab = { tab = it },
+                            )
                         MainTab.RANKING -> RankingScreen(
                             viewModel = viewModel,
                             onOpenDetail = { openDetail(it) },
@@ -342,7 +399,9 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                     .focusGroup()
                     .focusProperties { exit = { FocusRequester.Cancel } },
             ) {
-                DetailScreen(
+                if (!isTv && detailOverlay.providerId == "gaze") {
+                    GazeWebScreen(videoId = detailOverlay.videoId, onBack = { closeTopOverlay() })
+                } else DetailScreen(
                     viewModel = viewModel,
                     videoId = detailOverlay.videoId,
                     providerId = detailOverlay.providerId,

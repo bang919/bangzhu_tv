@@ -105,11 +105,11 @@ class GazeParser(private val baseUrl: String) {
             formHref.attr("href").contains("mform=chinese_cartoon") -> "动漫片"
             else -> formHref.text()
         }
-        val sources = doc.select("button[id^=play-source-tab-g]").mapNotNull { tab ->
-            val group = GROUP_ID.find(tab.id())?.groupValues?.get(1)?.toIntOrNull()
+        val sources = doc.select("[role=tablist][aria-label=播放线路] button[data-source-group], button[id^=play-source-tab-g]").distinctBy { it.attr("data-source-group").ifBlank { it.id() } }.mapNotNull { tab ->
+            val group = tab.attr("data-source-group").toIntOrNull() ?: GROUP_ID.find(tab.id())?.groupValues?.get(1)?.toIntOrNull()
                 ?: return@mapNotNull null
-            val panel = doc.selectFirst("#play-source-panel-g$group")
-            val buttons = panel?.select("button.playbtn").orEmpty()
+            val panel = doc.selectFirst("[role=tabpanel][data-source-group=$group], #play-source-panel-g$group")
+            val buttons = panel?.select("button[data-path], button.playbtn").orEmpty()
             val offset = panel?.attr("data-source-offset")?.toIntOrNull() ?: 0
             val count = panel?.attr("data-source-count")?.toIntOrNull() ?: 0
             val episodes = when {

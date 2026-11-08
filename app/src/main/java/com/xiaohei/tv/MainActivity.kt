@@ -1,6 +1,8 @@
 package com.xiaohei.tv
 
 import android.os.Bundle
+import android.os.Build
+import android.graphics.Color
 import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -26,6 +28,10 @@ private val MinimalBringIntoViewSpec = object : BringIntoViewSpec {}
 
 @OptIn(ExperimentalFoundationApi::class)
 class MainActivity : ComponentActivity() {
+    internal val isTvDevice: Boolean by lazy {
+        (BuildConfig.DEBUG && intent.getBooleanExtra("simulate_tv", false)) ||
+            (getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    }
     internal var keyEventObserver: ((keyCode: Int, repeatCount: Int) -> Unit)? = null
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -37,9 +43,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val isTv = (getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        val isTv = isTvDevice
         requestedOrientation = if (isTv) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         WindowCompat.setDecorFitsSystemWindows(window, !isTv)
+        window.navigationBarColor = Color.BLACK
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightNavigationBars = false
         if (isTv) WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE

@@ -8,6 +8,8 @@ import com.hongguotv.core.DiscoverySelection
 import com.hongguotv.core.DiscoveryCursor
 import com.hongguotv.core.DiscoveryGroup
 import com.hongguotv.core.RecommendationFeed
+import com.hongguotv.core.EmptyPlaybackResponseException
+import kotlinx.coroutines.delay
 import com.xiaohei.tv.data.model.*
 
 class HongguoProvider : MediaProvider {
@@ -136,7 +138,20 @@ class HongguoProvider : MediaProvider {
             related = related)
     }
     override suspend fun resolveStream(episodeHref: String): StreamInfo {
-        val stream = api.stream(episodeHref, 720)
+        val stream = retryEmptyPlayback { api.stream(episodeHref, 720) }
         return StreamInfo(stream.url, name, stream.quality, hongguoKey = stream.key, hongguo = true)
     }
+}
+
+/** A fresh request round can recover when all playback routes briefly return empty bodies. */
+internal suspend fun <T> retryEmptyPlayback(request: suspend () -> T): T {
+    val delays = longArrayOf(1_000, 2_500, 5_000)
+    for (wait in delays) {
+        try {
+            return request()
+        } catch (_: EmptyPlaybackResponseException) {
+            delay(wait)
+        }
+    }
+    return request()
 }

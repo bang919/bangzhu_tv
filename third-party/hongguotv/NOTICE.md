@@ -1,5 +1,7 @@
 # 原生版第三方声明
 
+播放请求、签名和空响应恢复实现参考并移植自 tsukiyo-zero/hongguoTV 提交 82704849c9（GPL-3.0-only）：https://github.com/tsukiyo-zero/hongguoTV/tree/82704849c9/kotlin-tv/core 。
+
 本地播放兼容修改参考 FanchangWang 的 GPL-3.0 项目贡献：
 https://github.com/N3urda/hongguoTV/pull/22 。播放请求使用独立设备标识和无签名请求，复用本项目原有的响应大小限制、请求取消及媒体解析逻辑。
 

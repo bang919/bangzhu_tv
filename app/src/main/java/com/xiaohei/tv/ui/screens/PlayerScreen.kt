@@ -3,6 +3,9 @@ package com.xiaohei.tv.ui.screens
 import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
+import android.media.AudioManager
+import android.provider.Settings
+import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -12,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -43,6 +47,7 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Slider
 import androidx.compose.material3.TextButton
@@ -67,6 +72,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -78,6 +86,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -127,6 +136,8 @@ import com.xiaohei.tv.ui.theme.TextMain
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private enum class PlayerPanel { None, Episodes, Sources, Versions, Tracks }
 
@@ -139,9 +150,11 @@ fun PlayerScreen(
     initialEpisodeIndex: Int,
     initialPosition: Long,
     onClose: () -> Unit,
+    onToggleOrientation: (() -> Unit)? = null,
+    isLandscape: Boolean = true,
 ) {
     val context = LocalContext.current
-    val isTv = (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    val isTv = (context as? com.xiaohei.tv.MainActivity)?.isTvDevice == true
     var volumeDialogOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -230,6 +243,16 @@ fun PlayerScreen(
     var hongguoVideo by remember { mutableStateOf<com.hongguotv.core.RemoteVideo?>(null) }
     val currentEpisode = currentSource?.episodes?.getOrNull(episodeIndex)
     val hasNext = currentSource?.episodes?.let { episodeIndex + 1 < it.size } == true
+    val activity = context as? com.xiaohei.tv.MainActivity
+    val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    DisposableEffect(activity) {
+        val originalBrightness = activity?.window?.attributes?.screenBrightness
+        onDispose {
+            if (activity != null && originalBrightness != null) {
+                activity.window.attributes = activity.window.attributes.apply { screenBrightness = originalBrightness }
+            }
+        }
+    }
 
     DisposableEffect(exo, detail, sourceIndex, episodeIndex) {
         var playingSince: Long? = null
@@ -335,6 +358,7 @@ fun PlayerScreen(
             if (startAt > 0) exo.seekTo(startAt)
             exo.playWhenReady = true
         } catch (loadError: Exception) {
+            if (loadError is kotlinx.coroutines.CancellationException) throw loadError
             streamState = LoadState.Failure(loadError.friendlyMessage())
         }
     }
@@ -476,8 +500,23 @@ fun PlayerScreen(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 interactionTick++
+                if (isTv && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU && panel == PlayerPanel.None) {
+                    showControls()
+                    return@onPreviewKeyEvent true
+                }
                 if (!controlsVisible) {
                     when (event.key) {
+                        Key.DirectionUp, Key.DirectionDown -> {
+                            if (isTv && detail.providerId == "hongguo") {
+                                if (event.nativeKeyEvent.repeatCount == 0) {
+                                    val next = episodeIndex + if (event.key == Key.DirectionDown) 1 else -1
+                                    val count = currentSource?.episodes?.size ?: 0
+                                    if (next in 0 until count) episodeIndex = next
+                                    else { seekHintText = if (next < 0) "已经是第一集" else "已经是最后一集"; seekHintTick++ }
+                                }
+                            } else showControls()
+                            true
+                        }
                         Key.DirectionLeft -> {
                             seekRelative(-10_000, "快退 10 秒")
                             true
@@ -521,7 +560,70 @@ fun PlayerScreen(
         )
 
         // A tap on the video reveals the same controls available to a TV remote.
-        Box(Modifier.fillMaxSize().clickable { showControls() })
+        Box(Modifier.fillMaxSize().pointerInput(isTv, detail.providerId, isLandscape, episodeIndex, currentSource, panel) {
+            if (isTv) return@pointerInput
+            var startX = 0f
+            var dx = 0f
+            var dy = 0f
+            var mode = 0 // 1: seek, 2: brightness, 3: volume, 4: episode
+            var startPosition = 0L
+            var startBrightness = 0.5f
+            var startVolume = 0
+            var targetPosition = 0L
+            detectDragGestures(
+                onDragStart = { point ->
+                    startX = point.x
+                    dx = 0f; dy = 0f; mode = 0
+                    startPosition = exo.currentPosition.coerceAtLeast(0)
+                    targetPosition = startPosition
+                    val windowBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
+                    startBrightness = if (windowBrightness >= 0f) windowBrightness else runCatching {
+                        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f
+                    }.getOrDefault(0.5f)
+                    startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                },
+                onDragEnd = {
+                    if (mode == 1 && exo.duration > 0) { exo.seekTo(targetPosition); position = targetPosition }
+                    if (mode == 4 && abs(dy) > size.height * 0.12f) {
+                        val next = episodeIndex + if (dy < 0) 1 else -1
+                        val count = currentSource?.episodes?.size ?: 0
+                        if (next in 0 until count) { episodeIndex = next; seekHintText = "第${next + 1}集" }
+                        else seekHintText = if (next < 0) "已经是第一集" else "已经是最后一集"
+                    }
+                    seekPreview = null
+                    if (mode != 0) seekHintTick++
+                },
+                onDragCancel = { seekPreview = null; seekHintTick++ },
+                onDrag = { change, amount ->
+                    if (panel != PlayerPanel.None) return@detectDragGestures
+                    dx += amount.x; dy += amount.y
+                    if (mode == 0 && maxOf(abs(dx), abs(dy)) > viewConfiguration.touchSlop) {
+                        mode = if (abs(dx) > abs(dy)) 1 else if (detail.providerId == "hongguo" && startX in size.width * 0.3f..size.width * 0.7f) 4 else if (startX < size.width / 2f) 2 else 3
+                    }
+                    when (mode) {
+                        1 -> if (exo.duration > 0) {
+                            val range = minOf(exo.duration, 600_000L)
+                            targetPosition = (startPosition + (dx / size.width * range).toLong()).coerceIn(0L, exo.duration)
+                            seekPreview = targetPosition
+                            seekHintText = "进度 ${formatDuration(targetPosition)} / ${formatDuration(exo.duration)}"
+                        }
+                        2 -> {
+                            val value = (startBrightness - dy / size.height).coerceIn(0.01f, 1f)
+                            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = value }
+                            seekHintText = "亮度 ${(value * 100).roundToInt()}%"
+                        }
+                        3 -> {
+                            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                            val value = (startVolume - dy / size.height * max).roundToInt().coerceIn(0, max)
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0)
+                            seekHintText = "音量 ${if (max > 0) value * 100 / max else 0}%"
+                        }
+                        4 -> seekHintText = if (dy < 0) "上滑切换下一集" else "下滑切换上一集"
+                    }
+                    if (mode != 0) { change.consume(); seekHintTick++ }
+                },
+            )
+        }.clickable { if (!isTv && controlsVisible && panel == PlayerPanel.None) controlsVisible = false else showControls() })
 
         if (streamState is LoadState.Loading || (isPlaying.not() && playbackState == Player.STATE_BUFFERING)) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -596,6 +698,13 @@ fun PlayerScreen(
                         color = TextDim,
                         fontSize = 14.sp,
                         maxLines = 1,
+                    )
+                }
+                if (onToggleOrientation != null) {
+                    PlayerIconButton(
+                        icon = Icons.Filled.ScreenRotation,
+                        contentDescription = if (isLandscape) "切换竖屏" else "切换横屏",
+                        onClick = { onToggleOrientation(); showControls() },
                     )
                 }
             }
@@ -971,13 +1080,23 @@ private fun MobileSeekBar(
 private fun AdaptivePlayerControls(isTv: Boolean, content: @Composable () -> Unit) {
     if (isTv) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) { content() }
+    } else if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) { content() }
     } else {
-        FlowRow(
+        Layout(
+            content = { Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) { content() } },
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) { content() }
+        ) { measurables, constraints ->
+            val row = measurables.single().measure(Constraints(maxWidth = Constraints.Infinity, maxHeight = constraints.maxHeight))
+            val scale = if (row.width > constraints.maxWidth) constraints.maxWidth.toFloat() / row.width else 1f
+            layout(constraints.maxWidth, (row.height * scale).toInt()) {
+                row.placeWithLayer(0, 0) {
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    scaleX = scale
+                    scaleY = scale
+                }
+            }
+        }
     }
 }
 
