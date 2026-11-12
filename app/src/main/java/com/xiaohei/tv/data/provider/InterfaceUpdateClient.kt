@@ -31,7 +31,7 @@ internal class InterfaceUpdateClient(
     /** A candidate is never made active until the signed manifest's digest matches. */
     suspend fun download(module: InterfaceModule, destination: File): File = withContext(Dispatchers.IO) {
         val downloadClient = client.newBuilder().followRedirects(true).followSslRedirects(false)
-            .readTimeout(45, TimeUnit.SECONDS).callTimeout(10, TimeUnit.MINUTES).build()
+            .readTimeout(30, TimeUnit.SECONDS).callTimeout(2, TimeUnit.MINUTES).build()
         val request = Request.Builder().url(module.url).build()
         try {
             downloadClient.newCall(request).execute().use { response ->

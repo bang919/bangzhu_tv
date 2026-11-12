@@ -31,6 +31,8 @@ class InterfaceManifestReaderTest {
         assertEquals(1, data.updates(mapOf("hongguo" to 1), 3).size)
         assertEquals(0, data.updates(mapOf("hongguo" to 2), 3).size)
         assertEquals(0, data.updates(mapOf("hongguo" to 1), 4).size)
+        val raw = "https://raw.githubusercontent.com/bang919/bangzhu_tv/main/interface-updates/modules/sources-v2.zip"
+        assertEquals("hongguo", read(manifest(raw)).modules.single().id)
     }
 
     @Test fun rejectsUntrustedHostAndUnknownProvider() {

@@ -44,9 +44,13 @@ internal object InterfaceManifestReader {
             require(module.minHostVersion > 0 && module.maxHostVersion >= module.minHostVersion) { "兼容版本无效" }
             require(module.sha256.matches(Regex("[a-f0-9]{64}"))) { "模块摘要无效" }
             val url = module.url.toHttpUrlOrNull()
-            require(url != null && url.scheme == "https" && url.host == "github.com" &&
+            val allowedPath = url != null && (
+                url.host == "github.com" && url.encodedPath.startsWith("/bang919/bangzhu_tv/releases/download/") ||
+                url.host == "raw.githubusercontent.com" && url.encodedPath.startsWith("/bang919/bangzhu_tv/main/interface-updates/modules/")
+            )
+            require(url != null && url.scheme == "https" && allowedPath &&
                 url.username.isEmpty() && url.password.isEmpty() && url.fragment == null &&
-                url.encodedPath.startsWith("/bang919/bangzhu_tv/releases/download/")) { "模块地址无效" }
+                url.encodedQuery == null) { "模块地址无效" }
         }
         return manifest
     }

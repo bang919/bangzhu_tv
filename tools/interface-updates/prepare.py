@@ -26,7 +26,7 @@ with zipfile.ZipFile(args.apk) as source, zipfile.ZipFile(module, 'w', zipfile.Z
     for name in names:
         target.writestr(name, source.read(name))
 digest = hashlib.file_digest(module.open('rb'), 'sha256').hexdigest()
-url = f'https://github.com/bang919/bangzhu_tv/releases/download/{args.tag}/{module.name}'
+url = f'https://raw.githubusercontent.com/bang919/bangzhu_tv/main/interface-updates/modules/{module.name}'
 entries = [dict(id=source, version=args.version, minHostVersion=args.host_version,
                 maxHostVersion=args.host_version, url=url, sha256=digest)
            for source in ('hongguo', 'xiaoheimi')]
