@@ -23,12 +23,49 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as XiaoheiApp).container
     private val repository = container.repository
     private val settingsStore = container.settings
     val clash = container.clash
+    private val modules = container.interfaceModules
+    private var checkedManifest: com.xiaohei.tv.data.provider.InterfaceUpdateClient.SignedManifest? = null
+    private val _interfaceUpdateCount = MutableStateFlow(0)
+    val interfaceUpdateCount = _interfaceUpdateCount.asStateFlow()
+    private val _interfaceGeneration = MutableStateFlow(0)
+    val interfaceGeneration = _interfaceGeneration.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { modules.restore() }
+            repository.clearSourceCaches()
+            _interfaceGeneration.value++
+            runCatching {
+                val manifest = modules.client.check()
+                checkedManifest = manifest
+                _interfaceUpdateCount.value = manifest.manifest.updates(modules.installedVersions(), com.xiaohei.tv.data.provider.InterfaceModuleStore.HOST_ABI).size
+            }
+        }
+    }
+
+    suspend fun updateInterfaces(): Result<Int> = runCatching {
+        val manifest = modules.client.check()
+        checkedManifest = manifest
+        val updates = manifest.manifest.updates(modules.installedVersions(), com.xiaohei.tv.data.provider.InterfaceModuleStore.HOST_ABI)
+        try {
+            for (module in updates) modules.install(manifest, module)
+        } finally {
+            repository.clearSourceCaches()
+            _interfaceUpdateCount.value = manifest.manifest.updates(modules.installedVersions(), com.xiaohei.tv.data.provider.InterfaceModuleStore.HOST_ABI).size
+            _interfaceGeneration.value++
+        }
+        updates.size
+    }
 
     val history: StateFlow<List<HistoryEntry>> = container.historyDao.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

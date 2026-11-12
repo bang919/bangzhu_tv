@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -95,6 +96,8 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
     val history = allHistory.filter { it.providerId != "gaze" }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val clashStatus by viewModel.clashStatus.collectAsStateWithLifecycle()
+    val interfaceUpdateCount by viewModel.interfaceUpdateCount.collectAsStateWithLifecycle()
+    val interfaceGeneration by viewModel.interfaceGeneration.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val activeProviderId = settings.providerId.ifBlank { viewModel.defaultProviderId }
     LaunchedEffect(activeProviderId) {
@@ -315,6 +318,8 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                     providers = viewModel.providerInfos.filter { it.id != "gaze" },
                     activeProviderId = activeProviderId,
                     onSelectProvider = { if (it != activeProviderId) { viewModel.setProvider(it); tab = MainTab.HOME } },
+                    interfaceUpdateAvailable = interfaceUpdateCount > 0,
+                    onUpdateInterfaces = { scope.launch { busyLabel = "正在更新接口…"; val result = viewModel.updateInterfaces(); busyLabel = null; showMessage(result.fold({ if (it > 0) "接口更新成功" else "接口已是最新版本" }, { it.friendlyMessage() })) } },
                     onLogoClick = {
                         if (tab == MainTab.HOME && overlays.isEmpty() && !vpnUnlocked) {
                             logoTaps++
@@ -330,6 +335,8 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                     providers = viewModel.providerInfos.filter { it.id != "gaze" },
                     activeProviderId = activeProviderId,
                     onSelectProvider = { if (it != activeProviderId) { viewModel.setProvider(it); tab = MainTab.HOME } },
+                    interfaceUpdateAvailable = interfaceUpdateCount > 0,
+                    onUpdateInterfaces = { scope.launch { busyLabel = "正在更新接口…"; val result = viewModel.updateInterfaces(); busyLabel = null; showMessage(result.fold({ if (it > 0) "接口更新成功" else "接口已是最新版本" }, { it.friendlyMessage() })) } },
                     onSelect = { selected ->
                         overlays = emptyList()
                         tab = selected
@@ -348,7 +355,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                     },
                 )
                 Box(modifier = Modifier.weight(1f)) {
-                    when (tab) {
+                    key(interfaceGeneration) { when (tab) {
                         MainTab.HOME -> HomeScreen(
                                 viewModel = viewModel,
                                 history = history,
@@ -382,7 +389,7 @@ fun XiaoheiTvApp(viewModel: MainViewModel) {
                                 )
                             }
                         }
-                    }
+                    } }
 
                     BusyOverlay(busyLabel)
                 }

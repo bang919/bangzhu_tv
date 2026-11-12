@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Text
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -113,6 +114,8 @@ fun TopNav(
     providers: List<ProviderInfo>,
     activeProviderId: String,
     onSelectProvider: (String) -> Unit,
+    interfaceUpdateAvailable: Boolean,
+    onUpdateInterfaces: () -> Unit,
     onSelect: (MainTab) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -161,11 +164,12 @@ fun TopNav(
             }
         }
         Row(
-            modifier = Modifier.width(if (vpnVisible) 260.dp else 208.dp),
+            modifier = Modifier.width((if (vpnVisible) 260 else 208).dp + if (interfaceUpdateAvailable) 52.dp else 0.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ProviderMenu(providers, activeProviderId, onSelectProvider)
+            if (interfaceUpdateAvailable) TvIconButton(icon = Icons.Filled.Refresh, contentDescription = "更新接口", onClick = onUpdateInterfaces, badgeColor = Gold)
             TvIconButton(
                 icon = Icons.Filled.Search,
                 contentDescription = "搜索",
@@ -248,7 +252,7 @@ private fun NavItem(
 }
 
 @Composable
-fun MobileNav(current: MainTab, tabs: List<MainTab>, onSelect: (MainTab) -> Unit, onOpenSearch: () -> Unit, onOpenHistory: () -> Unit, onOpenSettings: () -> Unit, settingsVisible: Boolean, onLogoClick: () -> Unit, providers: List<ProviderInfo>, activeProviderId: String, onSelectProvider: (String) -> Unit) {
+fun MobileNav(current: MainTab, tabs: List<MainTab>, onSelect: (MainTab) -> Unit, onOpenSearch: () -> Unit, onOpenHistory: () -> Unit, onOpenSettings: () -> Unit, settingsVisible: Boolean, onLogoClick: () -> Unit, providers: List<ProviderInfo>, activeProviderId: String, onSelectProvider: (String) -> Unit, interfaceUpdateAvailable: Boolean, onUpdateInterfaces: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(BgDark)) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.clickable(onClick = onLogoClick)) {
@@ -257,6 +261,7 @@ fun MobileNav(current: MainTab, tabs: List<MainTab>, onSelect: (MainTab) -> Unit
             }
             Spacer(Modifier.weight(1f))
             ProviderMenu(providers, activeProviderId, onSelectProvider)
+            if (interfaceUpdateAvailable) TvIconButton(icon = Icons.Filled.Refresh, contentDescription = "更新接口", onClick = onUpdateInterfaces, badgeColor = Gold)
             TvIconButton(icon = Icons.Filled.Search, contentDescription = "搜索", onClick = onOpenSearch)
             TvIconButton(icon = Icons.Filled.History, contentDescription = "观看历史", onClick = onOpenHistory, selected = current == MainTab.HISTORY)
             if (settingsVisible) TvIconButton(icon = Icons.Filled.Settings, contentDescription = "设置", onClick = onOpenSettings, selected = current == MainTab.SETTINGS)

@@ -21,6 +21,13 @@ import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
 
 class MediaRepository(private val providers: ProviderRegistry) {
+    fun clearSourceCaches() {
+        homeCache.clear()
+        categoryCache.clear()
+        searchCache.clear()
+        versionCache.clear()
+        synchronized(lock) { detailCache.clear(); streamCache.clear() }
+    }
     private data class Timed<T>(val value: T, val timestamp: Long)
 
     private val homeCache = ConcurrentHashMap<String, Timed<HomeData>>()
