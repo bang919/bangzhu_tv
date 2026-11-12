@@ -285,7 +285,14 @@ constructor(
         )
         val signed = identity.signer(clock, profile)
             .signPlayback(base, profile + extra, body, now = clock())
-        return signedRequest(signed.url, signed).apply {
+        val query = signed.url.substringAfter('?', "")
+        val ticket = query.split('&').firstOrNull { it.startsWith("_rticket=") }
+            ?.substringAfter('=')?.toLongOrNull()
+        val real = if (ticket != null) PlayerSigner.headers(query, body, ts = ticket / 1000, ticket = ticket)
+            else PlayerSigner.headers(query, body)
+        val placeholder = setOf("x-gorgon", "x-helios", "x-medusa", "x-argus", "x-ladon", "x-khronos", "x-ss-stub", "x-ss-req-ticket", "x-medias", "x-tt-dt")
+        val kept = signed.headers.filterKeys { it.lowercase() !in placeholder }
+        return signedRequest(signed.url, signed.copy(headers = kept + real)).apply {
             if (identity.cookie.isNotBlank()) header("Cookie", identity.cookie)
         }
     }

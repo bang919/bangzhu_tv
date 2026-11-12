@@ -1,5 +1,7 @@
 # 原生版第三方声明
 
+播放签名更新移植自 tsukiyo-zero/hongguoTV 提交 77a99f509b8a5c586bf6ef453147cf1003203970 的 Argus.kt（GPL-3.0-only）；该文件注明源自 https://github.com/ch6vip/fqapp 的签名实现。
+
 播放请求、签名和空响应恢复实现参考并移植自 tsukiyo-zero/hongguoTV 提交 82704849c9（GPL-3.0-only）：https://github.com/tsukiyo-zero/hongguoTV/tree/82704849c9/kotlin-tv/core 。
 
 本地播放兼容修改参考 FanchangWang 的 GPL-3.0 项目贡献：
