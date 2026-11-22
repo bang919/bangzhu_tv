@@ -870,13 +870,14 @@ constructor(
                     // GET video_tab 优先（官方 App 现行路径，2026-11-05 起对无签名请求短路返回
                     // 空正文）；失败时回退签名 POST 旧接口，两条路径共用同一注册身份。
                     val trace = PlaybackRequestTrace()
-                    fun transport(fresh: Boolean = false): OkHttpClient {
+                    fun transport(fresh: Boolean = false, attemptsLeft: Int = 1): OkHttpClient {
                         val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
                         if (remaining <= 0) throw java.net.SocketTimeoutException("播放信息读取超时")
+                        val budget = minOf(remaining, maxOf(600L, remaining / attemptsLeft))
                         return http.newBuilder()
-                            .connectTimeout(minOf(remaining, 4000), TimeUnit.MILLISECONDS)
-                            .readTimeout(minOf(remaining, 4000), TimeUnit.MILLISECONDS)
-                            .callTimeout(remaining, TimeUnit.MILLISECONDS)
+                            .connectTimeout(minOf(budget, 4000), TimeUnit.MILLISECONDS)
+                            .readTimeout(minOf(budget, 4000), TimeUnit.MILLISECONDS)
+                            .callTimeout(budget, TimeUnit.MILLISECONDS)
                             .apply { if (fresh) connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS)) }
                             .build()
                     }
@@ -952,7 +953,7 @@ constructor(
                         }
                         val route = pendingRoutes.removeFirst()
                         val attempt = attempts++
-                        val client = transport(fresh = attempt > 0)
+                        val client = transport(fresh = attempt > 0, attemptsLeft = if (speculative) 1 else minOf(4 - attempt, pendingRoutes.size + 1))
                         if (!route.get) postCount++
                         try {
                             val row = if (route.get) {
@@ -960,7 +961,7 @@ constructor(
                                     ?: throw IOException("首选播放信息格式或业务状态异常")
                             } else {
                                 val request = playbackRequest(
-                                    "https://${route.host}/novel/player/multi_video_model/v1/",
+                                    "https://${route.host}/novel/player/multi_video_model/${if (route.player) "player/" else ""}v1/",
                                     identity, body = payload,
                                 )
                                 val body = fetchPlaybackModel(request, client, trace, PlaybackRequestTrace.Stage.POST)
@@ -991,9 +992,9 @@ constructor(
                             val empty = error is EmptyPlaybackResponseException
                             allEmpty = allEmpty && empty
                             if (!route.get && empty) emptyPosts++
-                            if (route.get || empty || PlayRetryPlan.temporary(error)) identity.routes.failed(route, clock(), empty)
-                            // GET 结构不符仍可换备用接口；POST 明确业务/格式错误不继续盲试。
-                            if (!route.get && !PlayRetryPlan.temporary(error)) throw error
+                            identity.routes.failed(route, clock(), empty)
+                            // 非临时性网络错误直接返回；业务或模型异常可继续尝试其他形态。
+                            if (error is ContentHttpException && !PlayRetryPlan.temporary(error)) throw error
                         } finally {
                             if (attempt > 0) client.connectionPool.evictAll()
                         }

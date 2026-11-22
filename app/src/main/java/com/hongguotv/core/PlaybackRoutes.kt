@@ -3,10 +3,10 @@ package com.hongguotv.core
 
 /** 每个匿名会话独立记忆路径健康度，不保存身份、请求参数或媒体地址。 */
 internal class PlaybackRoutes {
-    data class Route(val get: Boolean, val host: String)
+    data class Route(val get: Boolean, val host: String, val player: Boolean = false)
     private data class Health(var success: Long = Long.MIN_VALUE, var blockedUntil: Long = 0, var empty: Boolean = false)
     private val routes = listOf(Route(true, PlayRetryPlan.host(0))) +
-        PlayRetryPlan.hosts.map { Route(false, it) }
+        PlayRetryPlan.hosts.flatMap { listOf(Route(false, it, true), Route(false, it)) }
     private val health = routes.associateWith { Health() }
 
     @Synchronized
