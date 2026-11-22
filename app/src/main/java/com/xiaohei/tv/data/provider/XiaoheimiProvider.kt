@@ -27,7 +27,7 @@ class XiaoheimiProvider(
 
     override suspend fun loadCategory(type: VideoType, href: String?): CategoryPage {
         val url = href ?: "$baseUrl/index.php/vod/show/id/${type.siteId()}.html"
-        val html = http.get(url, referer)
+        val html = http.get(categoryRequestUrl(url), referer)
         return parser.parseCategory(html, type.siteId(), type.label, url)
     }
 
@@ -104,4 +104,18 @@ class XiaoheimiProvider(
         const val ID = "xiaoheimi"
         const val DEFAULT_BASE_URL = "https://xiaoheimi.cc"
     }
+}
+
+/** The site's path-style language filters trigger a challenge; its query form serves the same filter. */
+internal fun categoryRequestUrl(url: String): String {
+    val parsed = url.toHttpUrl()
+    val segments = parsed.pathSegments
+    if (segments.size < 5 || segments.take(3) != listOf("index.php", "vod", "show") ||
+        "lang" !in segments || parsed.querySize != 0 || !segments.last().endsWith(".html")) return url
+    val params = segments.drop(3).toMutableList()
+    params[params.lastIndex] = params.last().removeSuffix(".html")
+    if (params.size % 2 != 0 || params.chunked(2).any { it[0] !in setOf("id", "by", "class", "area", "lang", "year", "letter", "page") }) return url
+    return parsed.newBuilder().encodedPath("/index.php/vod/show.html").apply {
+        params.chunked(2).forEach { (key, value) -> addQueryParameter(key, value) }
+    }.build().toString()
 }
